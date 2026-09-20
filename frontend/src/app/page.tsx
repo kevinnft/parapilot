@@ -179,16 +179,23 @@ export default function Home() {
     }
   };
 
-  const fetchWalletTokens = async (targetAddr?: string) => {
-    const target = targetAddr || inspectAddressInput || connectedAddress || "0x6E95951bbAc8454950508394EC0F5fcCF6c4d8Bf";
-    if (!target || !target.startsWith("0x")) return;
+  const fetchWalletTokens = async (targetAddr?: any) => {
+    const cleanAddr =
+      typeof targetAddr === "string" && targetAddr.startsWith("0x")
+        ? targetAddr
+        : inspectAddressInput && inspectAddressInput.startsWith("0x")
+        ? inspectAddressInput
+        : connectedAddress || "0x6E95951bbAc8454950508394EC0F5fcCF6c4d8Bf";
+
+    if (!cleanAddr || !cleanAddr.startsWith("0x")) return;
     setIsLoadingTokens(true);
     try {
-      const res = await fetch(`/api/wallet-tokens?address=${target}`);
+      const res = await fetch(`/api/wallet-tokens?address=${cleanAddr}`);
       if (res.ok) {
         const data = await res.json();
         setPortfolioTokens(data.tokens || []);
         setPortfolioTotalUsd(data.totalValueUsd || 0);
+        addLog("ZERION", "info", `Queried ${data.tokenCount} tokens for ${cleanAddr.slice(0, 6)}...${cleanAddr.slice(-4)} ($${data.totalValueUsd} USD).`);
       }
     } catch (e) {
       console.error("Token fetch error:", e);
