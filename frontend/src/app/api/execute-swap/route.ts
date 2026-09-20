@@ -11,7 +11,7 @@ const monadTestnet = defineChain({
   rpcUrls: { default: { http: ["https://testnet-rpc.monad.xyz"] } },
 });
 
-const DEX_ROUTER = "0xbc12983288B4225205Dc53702B1eba6298f94376" as const;
+const DEX_ROUTER = "0x191382fF69aaF5f91617644b6281f224D9bA2764" as const;
 
 const TOKEN_MAP: Record<string, { address: `0x${string}`; decimals: number; priceUsd: number }> = {
   MON: { address: "0x0000000000000000000000000000000000000000", decimals: 18, priceUsd: 3.0 },

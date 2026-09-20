@@ -29,7 +29,7 @@ contract MockDEX {
         }
     }
 
-    // MON -> Token (USDC, WETH, KURU)
+    // 1. MON -> Token (USDC, WETH, KURU)
     function swapExactETHForTokens(address tokenOut, uint256 minAmountOut) external payable returns (uint256) {
         require(msg.value > 0, "Zero value");
         uint256 amountOut = minAmountOut;
@@ -54,40 +54,47 @@ contract MockDEX {
         return amountOut;
     }
 
-    // Token -> MON (USDC -> MON, WETH -> MON, KURU -> MON)
+    // 2. Token -> MON (USDC -> MON, WETH -> MON, KURU -> MON)
     function swapExactTokensForETH(
         address tokenIn,
         uint256 amountIn,
         uint256 minAmountOut
     ) external returns (uint256) {
         require(amountIn > 0, "Zero amount");
-        try IERC20Mintable(tokenIn).transferFrom(msg.sender, address(this), amountIn) {} catch {}
 
         uint256 monOut = minAmountOut;
         if (monOut == 0) {
             uint8 inDec = getDecimals(tokenIn);
             if (inDec == 6) {
-                // e.g. USDC (6 dec): (amountIn * 1e12) / 3
                 monOut = (amountIn * 1e12) / 3;
             } else {
                 monOut = amountIn / 3;
             }
         }
 
+        uint256 actualIn = amountIn;
         if (monOut > address(this).balance) {
-            monOut = address(this).balance > 0.01 ether ? 0.01 ether : address(this).balance;
+            uint256 available = address(this).balance;
+            if (available > 0.005 ether) {
+                actualIn = (amountIn * (available - 0.005 ether)) / monOut;
+                monOut = available - 0.005 ether;
+            }
         }
 
-        if (monOut > 0) {
-            (bool s, ) = msg.sender.call{value: monOut}("");
-            require(s, "MON transfer failed");
-        }
+        require(actualIn > 0 && monOut > 0, "Insufficient pool MON balance");
+        require(
+            IERC20Mintable(tokenIn).transferFrom(msg.sender, address(this), actualIn),
+            "Token transferFrom failed: check allowance"
+        );
 
-        emit SwapExecuted(msg.sender, tokenIn, address(0), amountIn, monOut);
+        (bool s, ) = msg.sender.call{value: monOut}("");
+        require(s, "MON transfer failed");
+
+        emit SwapExecuted(msg.sender, tokenIn, address(0), actualIn, monOut);
         return monOut;
     }
 
-    // Token -> Token (USDC -> WETH, WETH -> USDC, KURU -> USDC, etc.)
+    // 3. Token -> Token (USDC -> WETH, WETH -> USDC, KURU -> USDC, etc.)
     function swapExactTokensForTokens(
         address tokenIn,
         address tokenOut,
@@ -95,7 +102,10 @@ contract MockDEX {
         uint256 minAmountOut
     ) external returns (uint256) {
         require(amountIn > 0, "Zero amount");
-        try IERC20Mintable(tokenIn).transferFrom(msg.sender, address(this), amountIn) {} catch {}
+        require(
+            IERC20Mintable(tokenIn).transferFrom(msg.sender, address(this), amountIn),
+            "Token transferFrom failed: check allowance"
+        );
 
         uint256 amountOut = minAmountOut;
         if (amountOut == 0) {

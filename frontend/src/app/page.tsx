@@ -108,7 +108,7 @@ export default function Home() {
     KURU: true,
   });
   const [whitelistedContracts, setWhitelistedContracts] = useState<Record<string, { address: string; active: boolean }>>({
-    "MockDEX Router (Multi-Token)": { address: "0xbc12983288B4225205Dc53702B1eba6298f94376", active: true },
+    "MockDEX Router (Multi-Token)": { address: "0x191382fF69aaF5f91617644b6281f224D9bA2764", active: true },
     "ParaPilotAccount": { address: "0x8A55d40977C49D4Ac5C569ebA4631D4e9026C592", active: true },
     "SessionKeyValidator": { address: "0x01022d952087B7FBacc8DA53478B0F555Fe457C4", active: true },
     "USDC Contract": { address: "0xd4309703c783E671F5Ef61630Cb576916cE03200", active: true },
@@ -694,7 +694,7 @@ export default function Home() {
     addLog("VALIDATOR", "success", `Policy Passed: Multi-Token DEX 0xbc12...4376 Whitelisted, Limit OK.`);
 
     try {
-      const DEX_ADDRESS = "0xbc12983288B4225205Dc53702B1eba6298f94376";
+      const DEX_ADDRESS = "0x191382fF69aaF5f91617644b6281f224D9bA2764";
       const tokenAddresses: Record<string, string> = {
         USDC: "0xd4309703c783E671F5Ef61630Cb576916cE03200",
         WETH: "0x7CeEe8e62AfeeD5645cD4024DbfeF3e5F71145e0",
@@ -705,6 +705,46 @@ export default function Home() {
       if (connectionMethod === "extension") {
         const provider = getOkxProvider() || getMetaMaskProvider() || (typeof window !== "undefined" ? (window as any).ethereum : null);
         if (!provider) throw new Error("No Web3 wallet provider detected. Please make sure OKX or MetaMask is active.");
+
+        // Step A: If swapping from an ERC-20 token, check and execute 1-time Approval
+        if (sourceToken !== "MON") {
+          const srcAddr = tokenAddresses[sourceToken];
+          const inUnits = BigInt(Math.floor(amountNum * 10 ** (tokenDecimals[sourceToken] || 18)));
+
+          // allowance(address owner, address spender) -> selector: 0xdd62ed3e
+          const allowCalldata = `0xdd62ed3e${connectedAddress.slice(2).toLowerCase().padStart(64, "0")}${DEX_ADDRESS.slice(2).toLowerCase().padStart(64, "0")}`;
+          let currentAllowance = BigInt(0);
+          try {
+            const allowHex = await provider.request({
+              method: "eth_call",
+              params: [{ to: srcAddr, data: allowCalldata }, "latest"],
+            });
+            if (allowHex && allowHex !== "0x") {
+              currentAllowance = BigInt(allowHex);
+            }
+          } catch (e) {
+            console.error("Allowance check error:", e);
+          }
+
+          if (currentAllowance < inUnits) {
+            addLog("MONAD_EVM", "info", `Step 1/2: Please approve ${sourceToken} in your wallet (OKX / MetaMask)...`);
+            // approve(address spender, uint256 amount) -> selector: 0x095ea7b3
+            const approveCalldata = `0x095ea7b3${DEX_ADDRESS.slice(2).toLowerCase().padStart(64, "0")}${"f".repeat(64)}`;
+            const appTx = await provider.request({
+              method: "eth_sendTransaction",
+              params: [
+                {
+                  from: connectedAddress,
+                  to: srcAddr,
+                  value: "0x0",
+                  data: approveCalldata,
+                },
+              ],
+            });
+            addLog("MONAD_EVM", "success", `1-Time Approval Confirmed: ${appTx.slice(0, 10)}... Now broadcasting swap.`);
+            await new Promise((r) => setTimeout(r, 1500));
+          }
+        }
 
         addLog("MONAD_EVM", "info", `Awaiting confirmation from your wallet extension (${sourceToken} -> ${targetToken})...`);
 
