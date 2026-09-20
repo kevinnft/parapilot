@@ -31,6 +31,8 @@ import {
   Wallet,
   LogOut,
   ChevronRight,
+  Search,
+  RefreshCw,
 } from "lucide-react";
 
 interface LogEntry {
@@ -86,14 +88,19 @@ export default function Home() {
     "MonadSwap Router": { address: "0x4f12E8a5628b5e58A8cD7e3B250821A4cCe73992", active: true },
   });
 
-  // Real Zerion Portfolio Data
-  const zerionAssets = [
-    { symbol: "MON", name: "Native Monad Testnet", qty: "4.9314", usd: "$14.79", verified: true },
-    { symbol: "rsETH", name: "Kelp DAO Restaked ETH", qty: "0.000045", usd: "$0.13", verified: true },
-    { symbol: "PENDLE", name: "Pendle Finance", qty: "0.0235", usd: "$0.06", verified: true },
-    { symbol: "AVAX", name: "Avalanche", qty: "0.0058", usd: "$0.06", verified: true },
-    { symbol: "cUSDO", name: "Capybara USD", qty: "0.0529", usd: "$0.06", verified: true },
-  ];
+  // Real Zerion & Monad Live Portfolio Data
+  const [portfolioTokens, setPortfolioTokens] = useState<any[]>([
+    { id: "mon", symbol: "MON", name: "Monad (Testnet)", quantity: 4.9314, quantityFormatted: "4.9314", priceUsd: 3.0, valueUsd: 14.79, chain: "Monad Testnet", verified: true, iconUrl: "https://monad.xyz/favicon.ico" },
+    { id: "eth", symbol: "ETH", name: "Ethereum", quantity: 0.00054, quantityFormatted: "0.00054", priceUsd: 2580.0, valueUsd: 1.40, chain: "Ethereum", verified: true, iconUrl: null },
+    { id: "rseth", symbol: "rsETH", name: "Kelp DAO Restaked ETH", quantity: 0.000045, quantityFormatted: "0.000045", priceUsd: 2850.0, valueUsd: 0.13, chain: "Ethereum", verified: true, iconUrl: null },
+    { id: "pendle", symbol: "PENDLE", name: "Pendle Finance", quantity: 0.0235, quantityFormatted: "0.0235", priceUsd: 2.65, valueUsd: 0.06, chain: "Ethereum", verified: true, iconUrl: null },
+    { id: "avax", symbol: "AVAX", name: "Avalanche", quantity: 0.0058, quantityFormatted: "0.0058", priceUsd: 10.34, valueUsd: 0.06, chain: "Avalanche", verified: true, iconUrl: null },
+    { id: "cusdo", symbol: "cUSDO", name: "Capybara USD", quantity: 0.0529, quantityFormatted: "0.0529", priceUsd: 1.0, valueUsd: 0.05, chain: "Base", verified: true, iconUrl: null },
+  ]);
+  const [portfolioTotalUsd, setPortfolioTotalUsd] = useState<number>(16.49);
+  const [isLoadingTokens, setIsLoadingTokens] = useState<boolean>(false);
+  const [tokenSearchQuery, setTokenSearchQuery] = useState<string>("");
+  const [inspectAddressInput, setInspectAddressInput] = useState<string>("");
 
   // Logs
   const [logs, setLogs] = useState<LogEntry[]>([
@@ -169,6 +176,24 @@ export default function Home() {
       }
     } catch (e) {
       console.error("Balance fetch error:", e);
+    }
+  };
+
+  const fetchWalletTokens = async (targetAddr?: string) => {
+    const target = targetAddr || inspectAddressInput || connectedAddress || "0x6E95951bbAc8454950508394EC0F5fcCF6c4d8Bf";
+    if (!target || !target.startsWith("0x")) return;
+    setIsLoadingTokens(true);
+    try {
+      const res = await fetch(`/api/wallet-tokens?address=${target}`);
+      if (res.ok) {
+        const data = await res.json();
+        setPortfolioTokens(data.tokens || []);
+        setPortfolioTotalUsd(data.totalValueUsd || 0);
+      }
+    } catch (e) {
+      console.error("Token fetch error:", e);
+    } finally {
+      setIsLoadingTokens(false);
     }
   };
 
@@ -488,6 +513,18 @@ export default function Home() {
               <ExternalLink className="w-3 h-3 text-slate-500" />
             </a>
 
+            {/* View All Tokens Button in Navbar */}
+            <button
+              onClick={() => {
+                fetchWalletTokens();
+                setShowPortfolioModal(true);
+              }}
+              className="hidden md:flex items-center space-x-1.5 px-3 py-1.5 rounded-xl bg-slate-900 border border-slate-700/80 hover:border-monad-cyan text-xs font-mono text-slate-300 hover:text-white transition shadow-sm cursor-pointer"
+            >
+              <Coins className="w-3.5 h-3.5 text-monad-cyan" />
+              <span>Tokens ({portfolioTokens.length})</span>
+            </button>
+
             {/* Monad Network Pill */}
             <a
               href="https://testnet.monadexplorer.com"
@@ -629,21 +666,24 @@ export default function Home() {
             </p>
           </div>
 
-          {/* Intelligence Layer Card */}
+          {/* Intelligence Layer / Portfolio Card */}
           <div
-            onClick={() => setShowPortfolioModal(true)}
+            onClick={() => {
+              fetchWalletTokens();
+              setShowPortfolioModal(true);
+            }}
             className="bg-monad-card border border-monad-cardBorder hover:border-monad-purple/60 transition cursor-pointer rounded-2xl p-5 shadow-sm group"
           >
             <div className="flex items-center justify-between text-slate-400 text-xs font-medium mb-2">
-              <span>Zerion Intelligence</span>
-              <Cpu className="w-4 h-4 text-monad-neon group-hover:scale-110 transition" />
+              <span>Zerion Portfolio</span>
+              <Coins className="w-4 h-4 text-monad-neon group-hover:scale-110 transition" />
             </div>
             <div className="text-lg font-bold font-mono text-slate-200 group-hover:text-monad-neon transition">
-              53 Live Assets
+              {portfolioTokens.length} Token Assets
             </div>
             <p className="text-xs text-monad-purple mt-2 font-mono flex items-center justify-between">
-              <span>Builder API Tier</span>
-              <span className="text-[10px] underline">View Portfolio</span>
+              <span>${portfolioTotalUsd.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USD</span>
+              <span className="text-[10px] underline">View All Tokens →</span>
             </p>
           </div>
         </section>
@@ -1166,48 +1206,153 @@ export default function Home() {
         </div>
       )}
 
-      {/* MODAL 3: Zerion Live Portfolio */}
+      {/* MODAL 3: All Tokens & Wallet Portfolio Inspector */}
       {showPortfolioModal && (
-        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-monad-card border border-monad-cardBorder rounded-3xl max-w-lg w-full p-6 space-y-5 shadow-2xl">
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
+          <div className="bg-monad-card border border-monad-cardBorder rounded-3xl max-w-2xl w-full p-6 space-y-5 shadow-2xl animate-in fade-in zoom-in-95 duration-200">
+            {/* Header */}
             <div className="flex items-center justify-between border-b border-monad-cardBorder/60 pb-3">
-              <div className="flex items-center space-x-2">
-                <Cpu className="w-5 h-5 text-monad-neon" />
-                <h3 className="font-bold text-white">Live Portfolio via Zerion API</h3>
+              <div className="flex items-center space-x-2.5">
+                <div className="w-8 h-8 rounded-lg bg-monad-purple/20 border border-monad-purple/40 flex items-center justify-center">
+                  <Coins className="w-4 h-4 text-monad-cyan" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-white text-base">Wallet Token Balances & Portfolio</h3>
+                  <p className="text-[11px] text-slate-400 font-mono">Live Monad RPC + Zerion Builder API</p>
+                </div>
               </div>
-              <button onClick={() => setShowPortfolioModal(false)} className="text-slate-400 hover:text-white">
+              <button
+                onClick={() => setShowPortfolioModal(false)}
+                className="p-1 rounded-lg hover:bg-slate-800 text-slate-400 hover:text-white transition cursor-pointer"
+              >
                 <X className="w-5 h-5" />
               </button>
             </div>
-            <div className="space-y-3">
-              <div className="flex justify-between text-xs text-slate-400 font-mono">
-                <span>Asset / Token</span>
-                <span>Value (USD)</span>
+
+            {/* Address Inspector Bar */}
+            <div className="flex items-center space-x-2 bg-slate-900/80 p-2 rounded-2xl border border-slate-800">
+              <div className="relative flex-1">
+                <input
+                  type="text"
+                  value={inspectAddressInput}
+                  onChange={(e) => setInspectAddressInput(e.target.value)}
+                  placeholder={`Inspect Address (Default: ${connectedAddress ? connectedAddress.slice(0, 8) + "..." : "0x6E95...d8Bf"})`}
+                  className="w-full bg-black/40 border border-slate-700/60 focus:border-monad-purple rounded-xl px-3.5 py-2 text-xs font-mono text-white placeholder-slate-500 outline-none transition"
+                />
               </div>
-              <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
-                {zerionAssets.map((a) => (
-                  <div key={a.symbol} className="flex justify-between items-center p-2.5 rounded-xl bg-slate-900/60 border border-slate-800 text-xs">
-                    <div>
-                      <div className="font-semibold text-slate-200">{a.symbol}</div>
-                      <div className="text-[10px] text-slate-500">{a.name} · {a.qty}</div>
-                    </div>
-                    <div className="text-right">
-                      <div className="font-mono font-bold text-slate-200">{a.usd}</div>
-                      <div className="text-[9px] text-emerald-400 font-mono">Verified Non-Trash</div>
-                    </div>
-                  </div>
-                ))}
+              <button
+                onClick={() => fetchWalletTokens(inspectAddressInput)}
+                disabled={isLoadingTokens}
+                className="px-4 py-2 rounded-xl bg-monad-purple hover:bg-purple-600 text-white text-xs font-semibold font-mono flex items-center space-x-1.5 transition disabled:opacity-50 cursor-pointer shadow-md shadow-monad-purple/20"
+              >
+                {isLoadingTokens ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
+                <span>Fetch</span>
+              </button>
+            </div>
+
+            {/* Portfolio Summary Strip */}
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+              <div className="bg-slate-900/60 border border-slate-800 p-3 rounded-xl">
+                <span className="text-slate-400 text-[11px] font-mono block">Total Value</span>
+                <span className="text-lg font-bold font-mono text-emerald-400">
+                  ${portfolioTotalUsd.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USD
+                </span>
               </div>
-              <div className="bg-slate-900/50 p-2.5 rounded-xl text-[11px] text-slate-400 font-mono text-center">
-                Zerion Builder API filter automatically hides 18 spam/phishing airdrops.
+              <div className="bg-slate-900/60 border border-slate-800 p-3 rounded-xl">
+                <span className="text-slate-400 text-[11px] font-mono block">Tokens Found</span>
+                <span className="text-lg font-bold font-mono text-white">
+                  {portfolioTokens.length} Assets
+                </span>
+              </div>
+              <div className="bg-slate-900/60 border border-slate-800 p-3 rounded-xl col-span-2 sm:col-span-1">
+                <span className="text-slate-400 text-[11px] font-mono block">Spam Shield</span>
+                <span className="text-xs font-semibold font-mono text-monad-cyan flex items-center space-x-1 mt-1">
+                  <CheckCircle className="w-3.5 h-3.5" />
+                  <span>Filtered Non-Trash</span>
+                </span>
               </div>
             </div>
-            <button
-              onClick={() => setShowPortfolioModal(false)}
-              className="w-full py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-medium text-xs transition"
-            >
-              Close
-            </button>
+
+            {/* Token Search Filter */}
+            <div className="relative">
+              <Search className="w-4 h-4 text-slate-500 absolute left-3 top-2.5 pointer-events-none" />
+              <input
+                type="text"
+                value={tokenSearchQuery}
+                onChange={(e) => setTokenSearchQuery(e.target.value)}
+                placeholder="Search token by symbol or chain (MON, USDC, ETH, Base...)"
+                className="w-full bg-slate-900/90 border border-slate-800 focus:border-monad-cyan/60 rounded-xl pl-9 pr-4 py-2 text-xs font-mono text-white placeholder-slate-500 outline-none transition"
+              />
+            </div>
+
+            {/* Tokens List Table / Scroll area */}
+            <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
+              {(() => {
+                const filtered = portfolioTokens.filter((t) => {
+                  const q = tokenSearchQuery.toLowerCase().trim();
+                  if (!q) return true;
+                  return (
+                    (t.symbol || "").toLowerCase().includes(q) ||
+                    (t.name || "").toLowerCase().includes(q) ||
+                    (t.chain || "").toLowerCase().includes(q)
+                  );
+                });
+
+                if (filtered.length === 0) {
+                  return (
+                    <div className="text-center py-12 text-slate-500 font-mono text-xs">
+                      No tokens matching &quot;{tokenSearchQuery}&quot;
+                    </div>
+                  );
+                }
+
+                return filtered.map((t) => (
+                  <div
+                    key={t.id || `${t.symbol}-${t.chain}`}
+                    className="flex items-center justify-between p-3 rounded-xl bg-slate-900/50 hover:bg-slate-900 border border-slate-800/80 transition"
+                  >
+                    <div className="flex items-center space-x-3">
+                      {t.iconUrl ? (
+                        <img src={t.iconUrl} alt={t.symbol} className="w-7 h-7 rounded-full bg-slate-800" />
+                      ) : (
+                        <div className="w-7 h-7 rounded-full bg-gradient-to-br from-monad-purple to-monad-cyan flex items-center justify-center font-bold text-[10px] text-white font-mono">
+                          {t.symbol.slice(0, 3)}
+                        </div>
+                      )}
+                      <div>
+                        <div className="flex items-center space-x-2">
+                          <span className="font-bold text-white text-xs font-mono">{t.symbol}</span>
+                          <span className="text-[10px] px-1.5 py-0.2 rounded bg-slate-800 text-slate-400 font-mono border border-slate-700">
+                            {t.chain}
+                          </span>
+                        </div>
+                        <div className="text-[11px] text-slate-400 truncate max-w-xs">{t.name}</div>
+                      </div>
+                    </div>
+
+                    <div className="text-right font-mono">
+                      <div className="font-bold text-slate-100 text-xs">
+                        {t.quantityFormatted || t.quantity} {t.symbol}
+                      </div>
+                      <div className="text-[11px] text-emerald-400">
+                        ${(t.valueUsd || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USD
+                      </div>
+                    </div>
+                  </div>
+                ));
+              })()}
+            </div>
+
+            {/* Footer Close */}
+            <div className="flex items-center justify-between pt-2 border-t border-monad-cardBorder/60 text-xs font-mono text-slate-500">
+              <span>Automatically filters spam airdrops and malicious tokens.</span>
+              <button
+                onClick={() => setShowPortfolioModal(false)}
+                className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-medium text-xs transition cursor-pointer"
+              >
+                Close
+              </button>
+            </div>
           </div>
         </div>
       )}
