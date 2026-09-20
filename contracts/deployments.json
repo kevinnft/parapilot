@@ -14,8 +14,8 @@
       "explorer": "https://testnet.monadexplorer.com/address/0x8A55d40977C49D4Ac5C569ebA4631D4e9026C592"
     },
     "MockDEX": {
-      "address": "0xbc12983288B4225205Dc53702B1eba6298f94376",
-      "explorer": "https://testnet.monadexplorer.com/address/0xbc12983288B4225205Dc53702B1eba6298f94376"
+      "address": "0x191382fF69aaF5f91617644b6281f224D9bA2764",
+      "explorer": "https://testnet.monadexplorer.com/address/0x191382fF69aaF5f91617644b6281f224D9bA2764"
     },
     "USDC": {
       "address": "0xd4309703c783E671F5Ef61630Cb576916cE03200",
@@ -25,7 +25,7 @@
     "WETH": {
       "address": "0x7CeEe8e62AfeeD5645cD4024DbfeF3e5F71145e0",
       "decimals": 18,
-      "explorer": "https://testnet.monadexplorer.com/address/0xd4309703c783E671F5Ef61630Cb576916cE03200"
+      "explorer": "https://testnet.monadexplorer.com/address/0x7CeEe8e62AfeeD5645cD4024DbfeF3e5F71145e0"
     },
     "KURU": {
       "address": "0x15c2cEf5c93AD6cc6158812C2e128579727Dd4ba",
