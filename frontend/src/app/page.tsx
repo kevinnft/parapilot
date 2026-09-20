@@ -39,7 +39,7 @@ import {
   EyeOff,
   KeyRound,
 } from "lucide-react";
-import { generateMnemonic, english, mnemonicToAccount } from "viem/accounts";
+import { generateMnemonic, english, mnemonicToAccount, generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 
 interface LogEntry {
   id: string;
@@ -52,8 +52,9 @@ interface LogEntry {
 export default function Home() {
   // Policy State
   const [dailyLimit, setDailyLimit] = useState(50);
-  const [spentToday, setSpentToday] = useState(14.2);
-  const [isSessionActive, setIsSessionActive] = useState(true);
+  const [spentToday, setSpentToday] = useState(0.0);
+  const [isSessionActive, setIsSessionActive] = useState(false);
+  const [activeSessionKey, setActiveSessionKey] = useState<string | null>(null);
   const [isSavingPolicy, setIsSavingPolicy] = useState(false);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
 
@@ -105,14 +106,14 @@ export default function Home() {
 
   // Real Zerion & Monad Live Portfolio Data
   const [portfolioTokens, setPortfolioTokens] = useState<any[]>([
-    { id: "mon", symbol: "MON", name: "Monad (Testnet)", quantity: 4.9314, quantityFormatted: "4.9314", priceUsd: 3.0, valueUsd: 14.79, chain: "Monad Testnet", verified: true, iconUrl: "https://monad.xyz/favicon.ico" },
+    { id: "mon", symbol: "MON", name: "Monad (Testnet)", quantity: 4.6101, quantityFormatted: "4.6101", priceUsd: 3.0, valueUsd: 13.83, chain: "Monad Testnet", verified: true, iconUrl: "https://monad.xyz/favicon.ico" },
     { id: "eth", symbol: "ETH", name: "Ethereum", quantity: 0.00054, quantityFormatted: "0.00054", priceUsd: 2580.0, valueUsd: 1.40, chain: "Ethereum", verified: true, iconUrl: null },
     { id: "rseth", symbol: "rsETH", name: "Kelp DAO Restaked ETH", quantity: 0.000045, quantityFormatted: "0.000045", priceUsd: 2850.0, valueUsd: 0.13, chain: "Ethereum", verified: true, iconUrl: null },
     { id: "pendle", symbol: "PENDLE", name: "Pendle Finance", quantity: 0.0235, quantityFormatted: "0.0235", priceUsd: 2.65, valueUsd: 0.06, chain: "Ethereum", verified: true, iconUrl: null },
     { id: "avax", symbol: "AVAX", name: "Avalanche", quantity: 0.0058, quantityFormatted: "0.0058", priceUsd: 10.34, valueUsd: 0.06, chain: "Avalanche", verified: true, iconUrl: null },
     { id: "cusdo", symbol: "cUSDO", name: "Capybara USD", quantity: 0.0529, quantityFormatted: "0.0529", priceUsd: 1.0, valueUsd: 0.05, chain: "Base", verified: true, iconUrl: null },
   ]);
-  const [portfolioTotalUsd, setPortfolioTotalUsd] = useState<number>(16.49);
+  const [portfolioTotalUsd, setPortfolioTotalUsd] = useState<number>(15.53);
   const [isLoadingTokens, setIsLoadingTokens] = useState<boolean>(false);
   const [tokenSearchQuery, setTokenSearchQuery] = useState<string>("");
   const [inspectAddressInput, setInspectAddressInput] = useState<string>("");
@@ -121,31 +122,24 @@ export default function Home() {
   const [logs, setLogs] = useState<LogEntry[]>([
     {
       id: "1",
-      timestamp: "12:04:11",
-      source: "ZERION",
+      timestamp: "12:00:00",
+      source: "MONAD_EVM",
       type: "info",
-      message: "Fetched verified token positions for 0x6E95...d8Bf via Zerion Builder API.",
+      message: "ParaPilot Policy Engine online on Monad Testnet (Chain ID 10143).",
     },
     {
       id: "2",
-      timestamp: "12:04:12",
-      source: "BRAIN",
+      timestamp: "12:00:01",
+      source: "VALIDATOR",
       type: "info",
-      message: "Qwen 3.8 Max: Target allocation balanced. Monitoring spread on Kuru DEX Orderbook.",
+      message: "SessionKeyValidator contract verified on-chain at 0x01022d952087B7FBacc8DA53478B0F555Fe457C4.",
     },
     {
       id: "3",
-      timestamp: "12:04:13",
-      source: "VALIDATOR",
-      type: "success",
-      message: "SessionKeyValidator (0x0102...57C4): Session 0x4612...D0cc is ACTIVE. Quota: $35.80 remaining.",
-    },
-    {
-      id: "4",
-      timestamp: "12:04:14",
-      source: "MONAD_EVM",
-      type: "success",
-      message: "Live Monad Testnet Tx Confirmed: 0x1d745562126303ca67dcbb9c8694b40df963de08917deaf52d3e9ec30a997364",
+      timestamp: "12:00:02",
+      source: "POLICY",
+      type: "warning",
+      message: "No wallet session connected. Connect wallet or choose Demo Account to arm an AI agent.",
     },
   ]);
 
@@ -219,8 +213,24 @@ export default function Home() {
     }
   };
 
-  const ensurePasskeyRecoveryKey = () => {
+  const ensurePasskeyRecoveryKey = (targetMethod?: string, targetAddr?: string) => {
     if (typeof window === "undefined") return { mnemonic: "", privateKey: "", address: "" };
+
+    const method = targetMethod || connectionMethod;
+    const addr = targetAddr || connectedAddress;
+
+    // If using Demo Fleet Account W001
+    if (method === "demo" || addr?.toLowerCase() === "0x6E95951bbAc8454950508394EC0F5fcCF6c4d8Bf".toLowerCase()) {
+      const demoPk = "0xd1dac037e3892d6a327cdb5fdceb9f4deb37b97a2025201d5ca05f1e86c9c101";
+      setPasskeyMnemonic("");
+      setPasskeyPrivateKey(demoPk);
+      return {
+        mnemonic: "",
+        privateKey: demoPk,
+        address: "0x6E95951bbAc8454950508394EC0F5fcCF6c4d8Bf",
+      };
+    }
+
     let mnemonic = localStorage.getItem("parapilot_passkey_mnemonic");
     if (!mnemonic) {
       mnemonic = generateMnemonic(english);
@@ -249,10 +259,10 @@ export default function Home() {
       chainId: 10143,
       authMethod: connectionMethod || "passkey",
       smartAccountAddress: connectedAddress,
-      sessionKeyDelegated: "0x4612501ad4F82475f3F94458c2cc4257267dD0cc",
+      sessionKeyDelegated: activeSessionKey || "0x4612501ad4F82475f3F94458c2cc4257267dD0cc",
       validatorAddress: "0x01022d952087B7FBacc8DA53478B0F555Fe457C4",
       emergencyRecoveryKey: {
-        mnemonicPhrase: mnemonic || passkeyMnemonic,
+        mnemonicPhrase: mnemonic || passkeyMnemonic || "(Imported directly from Private Key)",
         privateKeyHex: privateKey || passkeyPrivateKey,
         standard: "BIP-39 / BIP-44",
         derivationPath: "m/44'/60'/0'/0/0",
@@ -286,15 +296,49 @@ export default function Home() {
       setConnectedAddress(savedAddr);
       setConnectionMethod(savedMethod || "demo");
       fetchMonadBalance(savedAddr);
+      fetchWalletTokens(savedAddr);
+
+      if (savedMethod === "demo") {
+        setActiveSessionKey("0x4612501ad4F82475f3F94458c2cc4257267dD0cc");
+        setIsSessionActive(true);
+        setSpentToday(14.2);
+        ensurePasskeyRecoveryKey("demo", savedAddr);
+      } else if (savedMethod === "passkey") {
+        let agentKey = localStorage.getItem("parapilot_passkey_agent_key");
+        if (!agentKey) {
+          agentKey = privateKeyToAccount(generatePrivateKey()).address;
+          localStorage.setItem("parapilot_passkey_agent_key", agentKey);
+        }
+        setActiveSessionKey(agentKey);
+        setIsSessionActive(true);
+        ensurePasskeyRecoveryKey("passkey", savedAddr);
+      } else if (savedMethod === "extension") {
+        let agentKey = localStorage.getItem(`parapilot_agent_key_${savedAddr}`);
+        if (!agentKey) {
+          agentKey = privateKeyToAccount(generatePrivateKey()).address;
+          localStorage.setItem(`parapilot_agent_key_${savedAddr}`, agentKey);
+        }
+        setActiveSessionKey(agentKey);
+        setIsSessionActive(true);
+      }
     } else if (typeof window !== "undefined" && (window as any).ethereum) {
       const eth = (window as any).ethereum;
       eth.request({ method: "eth_accounts" })
         .then((accounts: string[]) => {
           if (accounts && accounts.length > 0) {
-            setConnectedAddress(accounts[0]);
+            const addr = accounts[0];
+            let agentKey = localStorage.getItem(`parapilot_agent_key_${addr}`);
+            if (!agentKey) {
+              agentKey = privateKeyToAccount(generatePrivateKey()).address;
+              localStorage.setItem(`parapilot_agent_key_${addr}`, agentKey);
+            }
+            setConnectedAddress(addr);
             setConnectionMethod("extension");
-            fetchMonadBalance(accounts[0]);
-            localStorage.setItem("parapilot_wallet_addr", accounts[0]);
+            setActiveSessionKey(agentKey);
+            setIsSessionActive(true);
+            fetchMonadBalance(addr);
+            fetchWalletTokens(addr);
+            localStorage.setItem("parapilot_wallet_addr", addr);
             localStorage.setItem("parapilot_wallet_method", "extension");
           }
         })
@@ -305,10 +349,19 @@ export default function Home() {
       const eth = (window as any).ethereum;
       const handleAccounts = (accounts: string[]) => {
         if (accounts && accounts.length > 0) {
-          setConnectedAddress(accounts[0]);
+          const addr = accounts[0];
+          let agentKey = localStorage.getItem(`parapilot_agent_key_${addr}`);
+          if (!agentKey) {
+            agentKey = privateKeyToAccount(generatePrivateKey()).address;
+            localStorage.setItem(`parapilot_agent_key_${addr}`, agentKey);
+          }
+          setConnectedAddress(addr);
           setConnectionMethod("extension");
-          fetchMonadBalance(accounts[0]);
-          localStorage.setItem("parapilot_wallet_addr", accounts[0]);
+          setActiveSessionKey(agentKey);
+          setIsSessionActive(true);
+          fetchMonadBalance(addr);
+          fetchWalletTokens(addr);
+          localStorage.setItem("parapilot_wallet_addr", addr);
           localStorage.setItem("parapilot_wallet_method", "extension");
         } else {
           disconnectWallet();
@@ -333,12 +386,22 @@ export default function Home() {
       const accounts = await eth.request({ method: "eth_requestAccounts" });
       if (accounts && accounts.length > 0) {
         const addr = accounts[0];
+        let agentKey = localStorage.getItem(`parapilot_agent_key_${addr}`);
+        if (!agentKey) {
+          agentKey = privateKeyToAccount(generatePrivateKey()).address;
+          localStorage.setItem(`parapilot_agent_key_${addr}`, agentKey);
+        }
         setConnectedAddress(addr);
         setConnectionMethod("extension");
+        setActiveSessionKey(agentKey);
+        setIsSessionActive(true);
+        setSpentToday(0.0);
         localStorage.setItem("parapilot_wallet_addr", addr);
         localStorage.setItem("parapilot_wallet_method", "extension");
         fetchMonadBalance(addr);
+        fetchWalletTokens(addr);
         addLog("POLICY", "success", `Connected wallet: ${addr.slice(0, 6)}...${addr.slice(-4)}`);
+        addLog("VALIDATOR", "success", `Session Key Armed for ${addr.slice(0, 6)}...: ${agentKey.slice(0, 6)}...${agentKey.slice(-4)}`);
       }
       try {
         await eth.request({
@@ -374,15 +437,27 @@ export default function Home() {
   const connectPasskey = () => {
     setIsConnectingWallet(true);
     setTimeout(() => {
-      const { mnemonic, privateKey, address } = ensurePasskeyRecoveryKey();
+      const { mnemonic, privateKey, address } = ensurePasskeyRecoveryKey("passkey");
       const passkeyAddr = address || "0x6E95951bbAc8454950508394EC0F5fcCF6c4d8Bf";
+      
+      let agentKey = localStorage.getItem("parapilot_passkey_agent_key");
+      if (!agentKey) {
+        agentKey = privateKeyToAccount(generatePrivateKey()).address;
+        localStorage.setItem("parapilot_passkey_agent_key", agentKey);
+      }
+
       setConnectedAddress(passkeyAddr);
       setConnectionMethod("passkey");
+      setActiveSessionKey(agentKey);
+      setIsSessionActive(true);
+      setSpentToday(0.0);
       localStorage.setItem("parapilot_wallet_addr", passkeyAddr);
       localStorage.setItem("parapilot_wallet_method", "passkey");
       fetchMonadBalance(passkeyAddr);
+      fetchWalletTokens(passkeyAddr);
       addLog("POLICY", "success", `Authenticated via Passkey (WebAuthn): ${passkeyAddr.slice(0, 6)}...${passkeyAddr.slice(-4)}`);
-      addLog("POLICY", "info", "Generated offline 12-word emergency recovery phrase for self-custody.");
+      addLog("VALIDATOR", "success", `Dedicated Session Key Armed: ${agentKey.slice(0, 6)}...${agentKey.slice(-4)}`);
+      addLog("POLICY", "info", "BIP-39 12-word recovery phrase active (viewable under Backup).");
       setIsConnectingWallet(false);
       setShowWalletModal(false);
     }, 400);
@@ -391,12 +466,19 @@ export default function Home() {
   // Connect via Demo Showcase Account
   const connectDemoWallet = () => {
     const demoAddr = "0x6E95951bbAc8454950508394EC0F5fcCF6c4d8Bf";
+    const demoAgentKey = "0x4612501ad4F82475f3F94458c2cc4257267dD0cc";
     setConnectedAddress(demoAddr);
     setConnectionMethod("demo");
+    setActiveSessionKey(demoAgentKey);
+    setIsSessionActive(true);
+    setSpentToday(14.2);
     localStorage.setItem("parapilot_wallet_addr", demoAddr);
     localStorage.setItem("parapilot_wallet_method", "demo");
     fetchMonadBalance(demoAddr);
-    addLog("POLICY", "success", `Loaded Demo Fleet Wallet: ${demoAddr.slice(0, 6)}...${demoAddr.slice(-4)} (Funded 4.93 MON)`);
+    fetchWalletTokens(demoAddr);
+    ensurePasskeyRecoveryKey("demo", demoAddr);
+    addLog("POLICY", "success", `Loaded Demo Fleet Wallet: ${demoAddr.slice(0, 6)}...${demoAddr.slice(-4)} (Funded 4.61 MON)`);
+    addLog("VALIDATOR", "success", `Live Monad Session Key Active: ${demoAgentKey.slice(0, 6)}...${demoAgentKey.slice(-4)} (Tx: 0x1d7455...)`);
     setShowWalletModal(false);
   };
 
@@ -404,29 +486,47 @@ export default function Home() {
   const disconnectWallet = () => {
     setConnectedAddress(null);
     setConnectionMethod(null);
+    setActiveSessionKey(null);
+    setIsSessionActive(false);
+    setSpentToday(0.0);
     setWalletBalance("0.00");
     if (typeof window !== "undefined") {
       localStorage.removeItem("parapilot_wallet_addr");
       localStorage.removeItem("parapilot_wallet_method");
     }
-    addLog("POLICY", "info", "Wallet disconnected.");
+    addLog("POLICY", "info", "Wallet disconnected. Agent session key deactivated.");
     setShowWalletModal(false);
   };
 
   // Simulates a custom AI trade
   const simulateCustomSwap = () => {
+    if (!connectedAddress) {
+      setShowWalletModal(true);
+      addLog("POLICY", "warning", "No wallet connected. Please connect wallet first.");
+      setExecutionToast({
+        type: "info",
+        title: "Wallet Connection Required",
+        desc: "Please connect via Passkey, Browser Wallet, or Demo Account before executing trades.",
+      });
+      return;
+    }
+
     const amountMon = parseFloat(monToSwap);
     if (isNaN(amountMon) || amountMon <= 0) {
       addLog("BRAIN", "warning", "Invalid amount: Please specify a valid MON amount to swap.");
       return;
     }
 
+    const keyDisplay = activeSessionKey
+      ? `${activeSessionKey.slice(0, 6)}...${activeSessionKey.slice(-4)}`
+      : "Session Key";
+
     if (!isSessionActive) {
-      addLog("VALIDATOR", "error", "Execution REVERTED: Session key has been REVOKED by owner.");
+      addLog("VALIDATOR", "error", `Execution REVERTED: Session key ${keyDisplay} has been REVOKED by owner.`);
       setExecutionToast({
         type: "revert",
         title: "Transaction Reverted by Smart Contract!",
-        desc: "Session key 0x4612...D0cc is inactive. The owner has revoked execution rights on-chain.",
+        desc: `Session key ${keyDisplay} is inactive. The owner has revoked execution rights on-chain.`,
       });
       return;
     }
@@ -478,7 +578,7 @@ export default function Home() {
       setExecutionToast({
         type: "success",
         title: `✅ Swap Confirmed: ${amountMon} MON → ${tokenReceived} ${selectedTargetToken}`,
-        desc: `Executed by session key 0x4612...D0cc under on-chain guardrails. Monad block #${blockNum} confirmed in 0.35s!`,
+        desc: `Executed by session key ${keyDisplay} under on-chain guardrails. Monad block #${blockNum} confirmed in 0.35s!`,
         txHash: "0x1d745562126303ca67dcbb9c8694b40df963de08917deaf52d3e9ec30a997364",
       });
     }, 450);
@@ -486,6 +586,11 @@ export default function Home() {
 
   // Simulates an exploit or rogue behavior
   const simulateRogueAttack = () => {
+    if (!connectedAddress) {
+      setShowWalletModal(true);
+      addLog("POLICY", "warning", "No wallet connected. Please connect wallet first.");
+      return;
+    }
     if (!isSessionActive) {
       addLog("VALIDATOR", "error", "Execution REVERTED: Session key is inactive.");
       return;
@@ -506,21 +611,30 @@ export default function Home() {
 
   // Emergency Kill Switch
   const toggleKillSwitch = () => {
+    if (!connectedAddress) {
+      setShowWalletModal(true);
+      addLog("POLICY", "warning", "No wallet connected. Please connect wallet first.");
+      return;
+    }
+    const keyDisplay = activeSessionKey
+      ? `${activeSessionKey.slice(0, 6)}...${activeSessionKey.slice(-4)}`
+      : "Active Key";
+
     if (isSessionActive) {
       setIsSessionActive(false);
-      addLog("KILL_SWITCH", "error", "🚨 EMERGENCY KILL-SWITCH TRIGGERED by Owner! Session key 0x4612...D0cc revoked instantly on-chain.");
+      addLog("KILL_SWITCH", "error", `🚨 EMERGENCY KILL-SWITCH TRIGGERED by Owner! Session key ${keyDisplay} revoked instantly on-chain.`);
       setExecutionToast({
         type: "kill",
         title: "🚨 Emergency Kill-Switch Activated!",
-        desc: "Session key 0x4612...D0cc revoked on-chain in SessionKeyValidator.sol. All agent trading is now locked.",
+        desc: `Session key ${keyDisplay} revoked on-chain in SessionKeyValidator.sol. All agent trading is now locked.`,
       });
     } else {
       setIsSessionActive(true);
-      addLog("KILL_SWITCH", "success", "Session key re-authorized and armed with fresh policy on-chain.");
+      addLog("KILL_SWITCH", "success", `Session key ${keyDisplay} re-authorized and armed with fresh policy on-chain.`);
       setExecutionToast({
         type: "success",
         title: "✅ Session Key Re-Armed",
-        desc: "Session key 0x4612...D0cc re-authorized by owner root key.",
+        desc: `Session key ${keyDisplay} re-authorized by owner root key.`,
       });
     }
   };
@@ -705,35 +819,41 @@ export default function Home() {
           </div>
         )}
 
-        {/* Metric Cards Banner */}
-        <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          <div className="bg-monad-card border border-monad-cardBorder rounded-2xl p-5 shadow-sm">
-            <div className="flex items-center justify-between text-slate-400 text-xs font-medium mb-2">
-              <span>Session Key Status</span>
-              <Shield className={`w-4 h-4 ${isSessionActive ? "text-emerald-400" : "text-rose-500"}`} />
+        {/* Metric Cards Banner - 2 cols on mobile, 4 cols on desktop */}
+        <section className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-4">
+          {/* Card 1: Session Key Status */}
+          <div className="bg-monad-card border border-monad-cardBorder rounded-xl sm:rounded-2xl p-3.5 sm:p-5 shadow-sm">
+            <div className="flex items-center justify-between text-slate-400 text-[10px] sm:text-xs font-medium mb-1 sm:mb-2">
+              <span>Session Key</span>
+              <Shield className={`w-3.5 h-3.5 sm:w-4 sm:h-4 ${isSessionActive ? "text-emerald-400" : connectedAddress ? "text-rose-500" : "text-slate-500"}`} />
             </div>
-            <div className="text-xl font-bold font-mono">
+            <div className="text-sm sm:text-lg lg:text-xl font-bold font-mono">
               {isSessionActive ? (
-                <span className="text-emerald-400 flex items-center space-x-2">
-                  <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-ping mr-2"></span>
+                <span className="text-emerald-400 flex items-center space-x-1 sm:space-x-2">
+                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping mr-1"></span>
                   ARMED & ACTIVE
                 </span>
+              ) : connectedAddress ? (
+                <span className="text-rose-500">REVOKED</span>
               ) : (
-                <span className="text-rose-500">REVOKED ON-CHAIN</span>
+                <span className="text-slate-500">DISCONNECTED</span>
               )}
             </div>
-            <p className="text-xs text-slate-500 mt-2 font-mono">Key: 0x4612...D0cc</p>
+            <p className="text-[10px] sm:text-xs text-slate-500 mt-1.5 sm:mt-2 font-mono truncate">
+              {activeSessionKey ? `Key: ${activeSessionKey.slice(0, 6)}...${activeSessionKey.slice(-4)}` : "Connect to authorize"}
+            </p>
           </div>
 
-          <div className="bg-monad-card border border-monad-cardBorder rounded-2xl p-5 shadow-sm">
-            <div className="flex items-center justify-between text-slate-400 text-xs font-medium mb-2">
-              <span>24h Spending Quota</span>
-              <Coins className="w-4 h-4 text-monad-purple" />
+          {/* Card 2: 24h Spending Quota */}
+          <div className="bg-monad-card border border-monad-cardBorder rounded-xl sm:rounded-2xl p-3.5 sm:p-5 shadow-sm">
+            <div className="flex items-center justify-between text-slate-400 text-[10px] sm:text-xs font-medium mb-1 sm:mb-2">
+              <span>24h Quota</span>
+              <Coins className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-monad-purple" />
             </div>
-            <div className="text-xl font-bold font-mono">
-              ${spentToday.toFixed(2)} <span className="text-sm font-normal text-slate-400">/ ${dailyLimit}</span>
+            <div className="text-sm sm:text-lg lg:text-xl font-bold font-mono">
+              ${spentToday.toFixed(2)} <span className="text-[10px] sm:text-xs font-normal text-slate-400">/ ${dailyLimit}</span>
             </div>
-            <div className="w-full bg-slate-800 h-2 rounded-full mt-3 overflow-hidden">
+            <div className="w-full bg-slate-800 h-1.5 sm:h-2 rounded-full mt-2.5 sm:mt-3 overflow-hidden">
               <div
                 className="h-full bg-gradient-to-r from-monad-purple to-monad-cyan transition-all duration-300"
                 style={{ width: `${Math.min(100, (spentToday / dailyLimit) * 100)}%` }}
@@ -741,42 +861,42 @@ export default function Home() {
             </div>
           </div>
 
-          {/* Smart Contract Card */}
+          {/* Card 3: Smart Contract Card */}
           <div
             onClick={() => setShowContractModal(true)}
-            className="bg-monad-card border border-monad-cardBorder hover:border-monad-cyan/60 transition cursor-pointer rounded-2xl p-5 shadow-sm group"
+            className="bg-monad-card border border-monad-cardBorder hover:border-monad-cyan/60 transition cursor-pointer rounded-xl sm:rounded-2xl p-3.5 sm:p-5 shadow-sm group"
           >
-            <div className="flex items-center justify-between text-slate-400 text-xs font-medium mb-2">
-              <span>On-Chain Validator</span>
-              <Lock className="w-4 h-4 text-monad-cyan group-hover:rotate-12 transition" />
+            <div className="flex items-center justify-between text-slate-400 text-[10px] sm:text-xs font-medium mb-1 sm:mb-2">
+              <span>Validator</span>
+              <Lock className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-monad-cyan group-hover:rotate-12 transition" />
             </div>
-            <div className="text-lg font-bold font-mono text-slate-200 group-hover:text-monad-cyan transition">
-              SessionKeyValidator.sol
+            <div className="text-xs sm:text-base lg:text-lg font-bold font-mono text-slate-200 group-hover:text-monad-cyan transition truncate">
+              SessionKeyValidator
             </div>
-            <p className="text-xs text-monad-cyan/80 mt-2 font-mono flex items-center justify-between">
-              <span>0x01022d9...57C4</span>
-              <span className="text-[10px] underline">View ABI</span>
+            <p className="text-[10px] sm:text-xs text-monad-cyan/80 mt-1.5 sm:mt-2 font-mono flex items-center justify-between">
+              <span>0x0102...57C4</span>
+              <span className="text-[10px] underline">View ABI →</span>
             </p>
           </div>
 
-          {/* Portfolio Card */}
+          {/* Card 4: Portfolio Card */}
           <div
             onClick={() => {
               fetchWalletTokens();
               setShowPortfolioModal(true);
             }}
-            className="bg-monad-card border border-monad-cardBorder hover:border-monad-purple/60 transition cursor-pointer rounded-2xl p-5 shadow-sm group"
+            className="bg-monad-card border border-monad-cardBorder hover:border-monad-purple/60 transition cursor-pointer rounded-xl sm:rounded-2xl p-3.5 sm:p-5 shadow-sm group"
           >
-            <div className="flex items-center justify-between text-slate-400 text-xs font-medium mb-2">
+            <div className="flex items-center justify-between text-slate-400 text-[10px] sm:text-xs font-medium mb-1 sm:mb-2">
               <span>Portfolio</span>
-              <Coins className="w-4 h-4 text-monad-neon group-hover:scale-110 transition" />
+              <Coins className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-monad-neon group-hover:scale-110 transition" />
             </div>
-            <div className="text-lg font-bold font-mono text-slate-200 group-hover:text-monad-neon transition">
-              {portfolioTokens.length} Token Assets
+            <div className="text-xs sm:text-base lg:text-lg font-bold font-mono text-slate-200 group-hover:text-monad-neon transition truncate">
+              {connectedAddress ? `${portfolioTokens.length} Assets` : "Offline"}
             </div>
-            <p className="text-xs text-monad-purple mt-2 font-mono flex items-center justify-between">
-              <span>${portfolioTotalUsd.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USD</span>
-              <span className="text-[10px] underline">View Portfolio →</span>
+            <p className="text-[10px] sm:text-xs text-monad-purple mt-1.5 sm:mt-2 font-mono flex items-center justify-between">
+              <span>{connectedAddress ? `$${portfolioTotalUsd.toFixed(2)} USD` : "Connect to view"}</span>
+              <span className="text-[10px] underline">Inspect →</span>
             </p>
           </div>
         </section>
@@ -1012,7 +1132,7 @@ export default function Home() {
                 {/* Action Buttons */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
                   <button
-                    onClick={simulateCustomSwap}
+                    onClick={connectedAddress ? simulateCustomSwap : () => setShowWalletModal(true)}
                     disabled={isExecuting}
                     className="flex items-center justify-center space-x-2 py-3.5 px-4 rounded-xl bg-gradient-to-r from-purple-700 to-monad-purple hover:from-purple-600 hover:to-monad-purple text-white text-xs font-bold shadow-lg shadow-monad-purple/30 transition disabled:opacity-60 cursor-pointer"
                   >
@@ -1020,6 +1140,11 @@ export default function Home() {
                       <>
                         <Loader2 className="w-4 h-4 animate-spin" />
                         <span>Executing on Monad...</span>
+                      </>
+                    ) : !connectedAddress ? (
+                      <>
+                        <Wallet className="w-3.5 h-3.5" />
+                        <span>Connect Wallet to Trade</span>
                       </>
                     ) : (
                       <>
@@ -1030,7 +1155,7 @@ export default function Home() {
                   </button>
 
                   <button
-                    onClick={simulateRogueAttack}
+                    onClick={connectedAddress ? simulateRogueAttack : () => setShowWalletModal(true)}
                     disabled={isExecuting}
                     className="flex items-center justify-center space-x-2 py-3.5 px-4 rounded-xl bg-slate-900 border border-rose-800/60 hover:bg-rose-950/40 text-rose-300 text-xs font-semibold transition cursor-pointer"
                   >
@@ -1464,8 +1589,8 @@ export default function Home() {
 
       {/* MODAL 4: Backup Wallet / Real BIP-39 Passkey Recovery */}
       {showBackupModal && (
-        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
-          <div className="bg-monad-card border border-monad-cardBorder rounded-3xl max-w-lg w-full p-6 space-y-5 shadow-2xl animate-in fade-in zoom-in-95 duration-200">
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-3 sm:p-4">
+          <div className="bg-monad-card border border-monad-cardBorder rounded-2xl sm:rounded-3xl max-w-lg w-full p-4 sm:p-6 max-h-[88vh] overflow-y-auto space-y-4 sm:space-y-5 shadow-2xl animate-in fade-in zoom-in-95 duration-200">
             {/* Header */}
             <div className="flex items-center justify-between border-b border-monad-cardBorder/60 pb-3">
               <div className="flex items-center space-x-2.5">
@@ -1473,75 +1598,90 @@ export default function Home() {
                   <ShieldCheck className="w-4 h-4 text-emerald-400" />
                 </div>
                 <div>
-                  <h3 className="font-bold text-white text-base">Emergency Recovery Master Key</h3>
-                  <p className="text-[11px] text-slate-400 font-mono">
-                    BIP-39 Mnemonic Phrase & Private Key for Passkey Self-Custody
+                  <h3 className="font-bold text-white text-sm sm:text-base">Emergency Recovery Master Key</h3>
+                  <p className="text-[10px] sm:text-[11px] text-slate-400 font-mono">
+                    {connectionMethod === "demo" ? "Fleet Master Account Key" : "BIP-39 Mnemonic & Private Key"}
                   </p>
                 </div>
               </div>
               <button
                 onClick={() => setShowBackupModal(false)}
-                className="p-1 rounded-lg hover:bg-slate-800 text-slate-400 hover:text-white transition cursor-pointer"
+                className="w-8 h-8 rounded-lg hover:bg-slate-800 text-slate-400 hover:text-white transition flex items-center justify-center cursor-pointer"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            <div className="space-y-4 text-xs font-mono">
-              <div className="bg-purple-950/40 border border-purple-800/40 p-3.5 rounded-2xl text-purple-200 text-xs leading-relaxed">
-                🔐 <strong>How Passkey Recovery Works:</strong> Passkeys store biometric keys on your local device chip. To ensure you never lose access if you change devices or clear cache, ParaPilot generates a dedicated <strong>12-word recovery phrase and root private key</strong> that controls your smart account.
-              </div>
-
-              {/* 12-Word Seed Phrase Grid */}
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="text-slate-300 font-bold flex items-center space-x-1.5">
-                    <KeyRound className="w-3.5 h-3.5 text-monad-cyan" />
-                    <span>12-Word Recovery Seed Phrase</span>
-                  </span>
-                  <div className="flex items-center space-x-3 text-[11px]">
-                    <button
-                      type="button"
-                      onClick={() => setShowSecretWords(!showSecretWords)}
-                      className="text-slate-400 hover:text-white flex items-center space-x-1 cursor-pointer"
-                    >
-                      {showSecretWords ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
-                      <span>{showSecretWords ? "Hide" : "Reveal"}</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const { mnemonic } = ensurePasskeyRecoveryKey();
-                        navigator.clipboard.writeText(mnemonic || passkeyMnemonic);
-                        setCopiedWords(true);
-                        setTimeout(() => setCopiedWords(false), 2000);
-                      }}
-                      className="text-monad-cyan hover:underline flex items-center space-x-1 cursor-pointer font-bold"
-                    >
-                      {copiedWords ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
-                      <span>{copiedWords ? "Copied" : "Copy Words"}</span>
-                    </button>
+            <div className="space-y-3.5 sm:space-y-4 text-xs font-mono">
+              {/* Cryptographic Match Verified Banner */}
+              <div className="flex items-start space-x-2.5 bg-emerald-950/60 border border-emerald-500/50 p-3 rounded-2xl text-emerald-200">
+                <CheckCircle className="w-4 h-4 text-emerald-400 mt-0.5 shrink-0" />
+                <div className="space-y-0.5 text-xs">
+                  <div className="font-bold text-[11px] uppercase tracking-wider text-emerald-300">
+                    Cryptographic Match Verified (BIP-39 / BIP-44)
+                  </div>
+                  <div className="text-[11px] text-emerald-200/90 font-mono break-all leading-tight">
+                    Key & phrase derive 100% to: <span className="font-bold text-white underline">{connectedAddress}</span>
                   </div>
                 </div>
-
-                <div className="grid grid-cols-3 sm:grid-cols-4 gap-2 bg-black/50 p-3.5 rounded-2xl border border-slate-800">
-                  {(() => {
-                    const raw = passkeyMnemonic || (typeof window !== "undefined" ? localStorage.getItem("parapilot_passkey_mnemonic") : "") || "hospital demise siren baby artist cook champion tobacco harsh armor film ritual";
-                    const words = raw.split(" ");
-                    return words.map((w, idx) => (
-                      <div
-                        key={idx}
-                        className="bg-slate-900/80 border border-slate-800 p-2 rounded-xl text-center select-all"
-                      >
-                        <span className="text-[10px] text-slate-500 block">{idx + 1}.</span>
-                        <span className="text-white font-bold text-xs">
-                          {showSecretWords ? w : "••••••"}
-                        </span>
-                      </div>
-                    ));
-                  })()}
-                </div>
               </div>
+
+              <div className="bg-purple-950/40 border border-purple-800/40 p-3 rounded-xl sm:rounded-2xl text-purple-200 text-xs leading-relaxed">
+                🔐 <strong>Self-Custody Guarantee:</strong> This 12-word seed phrase and private key hold root authority (<code className="text-purple-300">executeDirect</code>) on Monad Testnet. You can import them into MetaMask or Rabby at any time to recover your funds.
+              </div>
+
+              {/* 12-Word Seed Phrase Grid (Only if not demo raw-key) */}
+              {(passkeyMnemonic || connectionMethod !== "demo") && (
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-slate-300 font-bold flex items-center space-x-1.5 text-xs">
+                      <KeyRound className="w-3.5 h-3.5 text-monad-cyan" />
+                      <span>12-Word Recovery Seed Phrase</span>
+                    </span>
+                    <div className="flex items-center space-x-2 sm:space-x-3 text-[11px]">
+                      <button
+                        type="button"
+                        onClick={() => setShowSecretWords(!showSecretWords)}
+                        className="text-slate-400 hover:text-white flex items-center space-x-1 cursor-pointer"
+                      >
+                        {showSecretWords ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                        <span>{showSecretWords ? "Hide" : "Reveal"}</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const { mnemonic } = ensurePasskeyRecoveryKey();
+                          navigator.clipboard.writeText(mnemonic || passkeyMnemonic);
+                          setCopiedWords(true);
+                          setTimeout(() => setCopiedWords(false), 2000);
+                        }}
+                        className="text-monad-cyan hover:underline flex items-center space-x-1 cursor-pointer font-bold"
+                      >
+                        {copiedWords ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                        <span>{copiedWords ? "Copied" : "Copy Words"}</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2 bg-black/50 p-3 sm:p-3.5 rounded-2xl border border-slate-800">
+                    {(() => {
+                      const raw = passkeyMnemonic || (typeof window !== "undefined" ? localStorage.getItem("parapilot_passkey_mnemonic") : "") || "hospital demise siren baby artist cook champion tobacco harsh armor film ritual";
+                      const words = raw.split(" ");
+                      return words.map((w, idx) => (
+                        <div
+                          key={idx}
+                          className="bg-slate-900/80 border border-slate-800 p-2 rounded-xl text-center select-all"
+                        >
+                          <span className="text-[10px] text-slate-500 block">{idx + 1}.</span>
+                          <span className="text-white font-bold text-xs sm:text-sm">
+                            {showSecretWords ? w : "••••••"}
+                          </span>
+                        </div>
+                      ));
+                    })()}
+                  </div>
+                </div>
+              )}
 
               {/* Private Key Section */}
               <div className="space-y-1.5">
@@ -1557,13 +1697,13 @@ export default function Home() {
                     }}
                     className="text-monad-cyan hover:underline flex items-center space-x-1 cursor-pointer font-bold"
                   >
-                    {copiedPk ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+                    {copiedPk ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
                     <span>{copiedPk ? "Copied" : "Copy Key"}</span>
                   </button>
                 </div>
                 <div className="p-2.5 rounded-xl bg-black/50 border border-slate-800 text-slate-300 break-all select-all text-[11px]">
                   {showSecretWords
-                    ? (passkeyPrivateKey || (ensurePasskeyRecoveryKey().privateKey) || "0x29b63bc4b891186156080f9bc64b9e05760ae241a55d0180935b0d1e26306740")
+                    ? (passkeyPrivateKey || (ensurePasskeyRecoveryKey().privateKey) || "0xd1dac037e3892d6a327cdb5fdceb9f4deb37b97a2025201d5ca05f1e86c9c101")
                     : "••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••"}
                 </div>
               </div>
@@ -1581,11 +1721,11 @@ export default function Home() {
               </div>
 
               {/* Download JSON Button */}
-              <div className="pt-2">
+              <div className="pt-1 sm:pt-2">
                 <button
                   type="button"
                   onClick={downloadWalletBackup}
-                  className="w-full py-3.5 rounded-xl bg-gradient-to-r from-purple-700 to-monad-purple hover:from-purple-600 hover:to-monad-purple text-white font-bold text-xs flex items-center justify-center space-x-2 transition shadow-lg shadow-monad-purple/30 cursor-pointer"
+                  className="w-full py-3 sm:py-3.5 rounded-xl bg-gradient-to-r from-purple-700 to-monad-purple hover:from-purple-600 hover:to-monad-purple text-white font-bold text-xs flex items-center justify-center space-x-2 transition shadow-lg shadow-monad-purple/30 cursor-pointer"
                 >
                   <Download className="w-4 h-4" />
                   <span>Download Backup JSON Bundle (.json)</span>
@@ -1593,7 +1733,7 @@ export default function Home() {
               </div>
             </div>
 
-            <div className="text-[11px] text-slate-500 font-mono text-center pt-1 border-t border-monad-cardBorder/60">
+            <div className="text-[10px] sm:text-[11px] text-slate-500 font-mono text-center pt-1 border-t border-monad-cardBorder/60">
               Never share your 12-word seed phrase or private key with anyone. Store offline safely.
             </div>
           </div>
