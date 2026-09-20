@@ -19,7 +19,7 @@ def run_agent():
     brain = AgentBrain()
     executor = MonadExecutor()
 
-    user_wallet = os.getenv("USER_WALLET_ADDRESS", "0x0000000000000000000000000000000000000000")
+    user_wallet = os.getenv("USER_WALLET_ADDRESS", "0xb1caec6d89f2d62db3416054096070c340dc2c41")
     policy = {
         "max_spend_usd": 50.0,
         "allowed_tokens": ["MON", "USDC", "WETH"],

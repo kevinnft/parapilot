@@ -37,7 +37,7 @@ describe("ParaPilot: Policy Engine & Session Key Guardrails", function () {
     await mockDEX.waitForDeployment();
 
     const ERC20Factory = await ethers.getContractFactory("MockERC20");
-    mockUSDC = await ERC20Factory.deploy("USD Coin", "USDC");
+    mockUSDC = await ERC20Factory.deploy("USD Coin", "USDC", 6);
     await mockUSDC.waitForDeployment();
   });
 

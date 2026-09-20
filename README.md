@@ -60,14 +60,26 @@ As AI agents become active economic actors on-chain, delegating transactional au
 
 ## 🌐 Live Verified Deployments on Monad Testnet
 
-The core contracts are deployed and verified live on **Monad Testnet (Chain ID: 10143)**:
+All contracts are deployed and verified live on **Monad Testnet (Chain ID: 10143)**:
 
-| Component | Monad Testnet Address / Tx | Explorer Link |
+| Component | Monad Testnet Contract Address | Explorer Link |
 | :--- | :--- | :--- |
-| **SessionKeyValidator** | `0x01022d952087B7FBacc8DA53478B0F555Fe457C4` | [View on Explorer](https://testnet.monadexplorer.com/address/0x01022d952087B7FBacc8DA53478B0F555Fe457C4) |
-| **ParaPilotAccount** | `0x8A55d40977C49D4Ac5C569ebA4631D4e9026C592` | [View on Explorer](https://testnet.monadexplorer.com/address/0x8A55d40977C49D4Ac5C569ebA4631D4e9026C592) |
-| **Policy Registration Tx** | `0xffc34acf9931...` | [View Tx](https://testnet.monadexplorer.com/tx/0xffc34acf99310ecc27de96fad223a742fa31defa607e07dce61bf1cf3bec26fd) |
-| **Autonomous Agent Execution Tx** | `0x1d7455621263...` | [View Tx](https://testnet.monadexplorer.com/tx/0x1d745562126303ca67dcbb9c8694b40df963de08917deaf52d3e9ec30a997364) |
+| **SessionKeyValidator** | `0x01022d952087B7FBacc8DA53478B0F555Fe457C4` | [View Contract](https://testnet.monadexplorer.com/address/0x01022d952087B7FBacc8DA53478B0F555Fe457C4) |
+| **ParaPilotAccount** | `0x8A55d40977C49D4Ac5C569ebA4631D4e9026C592` | [View Contract](https://testnet.monadexplorer.com/address/0x8A55d40977C49D4Ac5C569ebA4631D4e9026C592) |
+| **MockDEX Router (Multi-Token)** | `0x191382fF69aaF5f91617644b6281f224D9bA2764` | [View Contract](https://testnet.monadexplorer.com/address/0x191382fF69aaF5f91617644b6281f224D9bA2764) |
+| **USD Coin (USDC, 6 decimals)** | `0xd4309703c783E671F5Ef61630Cb576916cE03200` | [View Token](https://testnet.monadexplorer.com/address/0xd4309703c783E671F5Ef61630Cb576916cE03200) |
+| **Wrapped Ether (WETH, 18 decimals)** | `0x7CeEe8e62AfeeD5645cD4024DbfeF3e5F71145e0` | [View Token](https://testnet.monadexplorer.com/address/0x7CeEe8e62AfeeD5645cD4024DbfeF3e5F71145e0) |
+| **Kuru Token (KURU, 18 decimals)** | `0x15c2cEf5c93AD6cc6158812C2e128579727Dd4ba` | [View Token](https://testnet.monadexplorer.com/address/0x15c2cEf5c93AD6cc6158812C2e128579727Dd4ba) |
+
+### ⚡ Verified Live Transactions on Monad Testnet:
+- **Policy Registration (W002 Authorized)**: [`0x33c0ce8e...`](https://testnet.monadexplorer.com/tx/0x33c0ce8eeb3658c37500292a23d2714420b37f0ea65fe65ccab9e24f639cae79) (`Status: SUCCESS (0x1)`)
+- **Policy-Guarded Agent Swap (MON → USDC)**: [`0xbc8cb198...`](https://testnet.monadexplorer.com/tx/0xbc8cb198433460a5542fa0a303eab62c1b8dda95cc98c4450cada84dadeae5f5) (`Status: SUCCESS (0x1)`)
+- **Policy-Guarded Agent Swap (MON → WETH)**: [`0xa5d7878d...`](https://testnet.monadexplorer.com/tx/0xa5d7878d069d5b78a68b834c93873246a76541229fc166bd5ee465d2efdff486) (`Status: SUCCESS (0x1)`)
+- **Policy-Guarded Agent Swap (MON → KURU)**: [`0x7785cba3...`](https://testnet.monadexplorer.com/tx/0x7785cba3f6a8495feb5f2eabcaba30f7676cba8068b388ed3048ef7ba4c23b95) (`Status: SUCCESS (0x1)`)
+- **Direct User Multi-Token Swap (USDC → WETH)**: [`0x5bf49457...`](https://testnet.monadexplorer.com/tx/0x5bf49457ae9724fe5be4862b14a42bda0b10bb46e92da8801b9ff07b86f6b42c) (`Status: SUCCESS (0x1)`)
+- **Direct User Multi-Token Swap (WETH → USDC)**: [`0xf4e92940...`](https://testnet.monadexplorer.com/tx/0xf4e92940c8ee12506a30d8a3cc5a1c828b53023c1362d1caf08f250a4aa20f88) (`Status: SUCCESS (0x1)`)
+- **Direct User Multi-Token Swap (USDC → MON)**: [`0x7e054302...`](https://testnet.monadexplorer.com/tx/0x7e054302aeec9d2fec96312d33831588e9d03b1f5f7ca8b98aca0adbff0ca3c7) (`Status: SUCCESS (0x1)`)
+- **Live Production App URL**: **`https://parapilot-ruby.vercel.app/`**
 
 ---
 

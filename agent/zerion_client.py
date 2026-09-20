@@ -12,7 +12,7 @@ class ZerionClient:
     BASE_URL = "https://api.zerion.io/v1"
 
     def __init__(self, api_key: Optional[str] = None):
-        self.api_key = api_key or os.getenv("ZERION_API_KEY", "")
+        self.api_key = api_key or os.getenv("ZERION_API_KEY", "zk_1d29109b945645ccac3f667e57adac1b")
         # Zerion requires HTTP Basic Auth with API key as username and empty password
         if self.api_key:
             auth_str = base64.b64encode(f"{self.api_key}:".encode()).decode()

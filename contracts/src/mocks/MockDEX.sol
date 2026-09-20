@@ -129,4 +129,8 @@ contract MockDEX {
         emit SwapExecuted(msg.sender, tokenIn, tokenOut, amountIn, amountOut);
         return amountOut;
     }
+
+    function unauthorizedMethod() external pure returns (bool) {
+        return true;
+    }
 }
