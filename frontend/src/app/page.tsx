@@ -27,6 +27,7 @@ import {
   FileCode2,
   Check,
   Copy,
+  Loader2,
 } from "lucide-react";
 
 interface LogEntry {
@@ -48,6 +49,19 @@ export default function Home() {
   // Custom Swap State
   const [monToSwap, setMonToSwap] = useState<string>("2.5");
   const [selectedTargetToken, setSelectedTargetToken] = useState<string>("USDC");
+  const [isExecuting, setIsExecuting] = useState(false);
+
+  // Execution Toast Feedback State
+  const [executionToast, setExecutionToast] = useState<{
+    type: "success" | "revert" | "kill" | "info";
+    title: string;
+    desc: string;
+    txHash?: string;
+  } | null>(null);
+
+  // Wallet Connection
+  const [connectedAddress, setConnectedAddress] = useState<string>("0x6E95951bbAc8454950508394EC0F5fcCF6c4d8Bf");
+  const [isConnectingWallet, setIsConnectingWallet] = useState(false);
 
   // Modals
   const [showPasskeyModal, setShowPasskeyModal] = useState(false);
@@ -130,6 +144,48 @@ export default function Home() {
     setLogs((prev) => [...prev, newLog]);
   };
 
+  // Connect Wallet (MetaMask or Passkey)
+  const handleConnectWallet = async () => {
+    if (typeof window !== "undefined" && (window as any).ethereum) {
+      try {
+        setIsConnectingWallet(true);
+        const eth = (window as any).ethereum;
+        const accounts = await eth.request({ method: "eth_requestAccounts" });
+        if (accounts && accounts.length > 0) {
+          setConnectedAddress(accounts[0]);
+          addLog("POLICY", "success", `Connected wallet: ${accounts[0].slice(0, 6)}...${accounts[0].slice(-4)}`);
+        }
+        try {
+          await eth.request({
+            method: "wallet_switchEthereumChain",
+            params: [{ chainId: "0x279f" }],
+          });
+        } catch (switchErr: any) {
+          if (switchErr.code === 4902) {
+            await eth.request({
+              method: "wallet_addEthereumChain",
+              params: [
+                {
+                  chainId: "0x279f",
+                  chainName: "Monad Testnet",
+                  nativeCurrency: { name: "MON", symbol: "MON", decimals: 18 },
+                  rpcUrls: ["https://testnet-rpc.monad.xyz"],
+                  blockExplorerUrls: ["https://testnet.monadexplorer.com"],
+                },
+              ],
+            });
+          }
+        }
+      } catch (err: any) {
+        console.error(err);
+      } finally {
+        setIsConnectingWallet(false);
+      }
+    } else {
+      setShowPasskeyModal(true);
+    }
+  };
+
   // Simulates a custom AI trade
   const simulateCustomSwap = () => {
     const amountMon = parseFloat(monToSwap);
@@ -140,35 +196,65 @@ export default function Home() {
 
     if (!isSessionActive) {
       addLog("VALIDATOR", "error", "Execution REVERTED: Session key has been REVOKED by owner.");
+      setExecutionToast({
+        type: "revert",
+        title: "Transaction Reverted by Smart Contract!",
+        desc: "Session key 0x4612...D0cc is inactive. The owner has revoked execution rights on-chain.",
+      });
       return;
     }
 
     // Check token whitelist
     if (!allowedTokens[selectedTargetToken as keyof typeof allowedTokens]) {
       addLog("VALIDATOR", "error", `🛑 REVERTED: TokenNotWhitelisted(${selectedTargetToken}) - Target asset is disabled in policy.`);
+      setExecutionToast({
+        type: "revert",
+        title: `Asset Blocked: ${selectedTargetToken}`,
+        desc: `Smart contract rejected trade because ${selectedTargetToken} is not in the owner whitelist.`,
+      });
       return;
     }
 
-    const monPrice = 3.0; // 1 MON = $3.00 USD
+    const monPrice = 3.0;
     const spendUsd = +(amountMon * monPrice).toFixed(2);
     const tokenReceived = +(amountMon * 2.95).toFixed(2);
     const remainingQuota = +(dailyLimit - spentToday).toFixed(2);
 
+    setIsExecuting(true);
+
     if (spentToday + spendUsd > dailyLimit) {
-      addLog("BRAIN", "warning", `AI calculating swap: Trade of ${amountMon} MON ($${spendUsd}) exceeds 24h limit.`);
-      addLog("VALIDATOR", "error", `🛑 REVERTED: SpendLimitExceeded() - Attempted $${spendUsd} with only $${remainingQuota} quota remaining.`);
-      addLog("MONAD_EVM", "warning", "On-chain state protected: Zero funds moved from ParaPilotAccount.");
+      setTimeout(() => {
+        setIsExecuting(false);
+        addLog("BRAIN", "warning", `AI calculating swap: Trade of ${amountMon} MON ($${spendUsd}) exceeds 24h limit.`);
+        addLog("VALIDATOR", "error", `🛑 REVERTED: SpendLimitExceeded() - Attempted $${spendUsd} with only $${remainingQuota} quota remaining.`);
+        addLog("MONAD_EVM", "warning", "On-chain state protected: Zero funds moved from ParaPilotAccount.");
+        setExecutionToast({
+          type: "revert",
+          title: "🛑 Reverted: SpendLimitExceeded()",
+          desc: `Attempted $${spendUsd} USD, but only $${remainingQuota} remains in the 24h guardrail quota.`,
+        });
+      }, 350);
       return;
     }
 
     addLog("BRAIN", "info", `Arbitrage identified on Kuru DEX: Swap ${amountMon} MON -> ${tokenReceived} ${selectedTargetToken}.`);
     addLog("ZERION", "info", `Zerion Builder API verifies ${selectedTargetToken} reputation & liquidity depth.`);
     addLog("VALIDATOR", "success", `Policy Passed: Kuru DEX Whitelisted, Spend ($${spendUsd}) <= Remaining Limit ($${remainingQuota}).`);
+
     setTimeout(() => {
-      const mockHash = "0x" + Array.from({length: 40}, () => Math.floor(Math.random()*16).toString(16)).join("");
-      addLog("MONAD_EVM", "success", `Tx Confirmed on Monad Parallel EVM (Block #${51550950 + Math.floor(Math.random()*25)}, Latency: 0.35s). Hash: ${mockHash.slice(0, 10)}...${mockHash.slice(-4)}`);
+      setIsExecuting(false);
+      const mockHash = "0x" + Array.from({ length: 40 }, () => Math.floor(Math.random() * 16).toString(16)).join("");
+      const blockNum = 51550950 + Math.floor(Math.random() * 25);
+      addLog("MONAD_EVM", "success", `Tx Confirmed on Monad Parallel EVM (Block #${blockNum}, Latency: 0.35s). Hash: ${mockHash.slice(0, 10)}...${mockHash.slice(-4)}`);
       setSpentToday((prev) => Math.min(dailyLimit, +(prev + spendUsd).toFixed(2)));
-    }, 350);
+
+      setExecutionToast({
+        type: "success",
+        title: `✅ Swap Confirmed: ${amountMon} MON → ${tokenReceived} ${selectedTargetToken}`,
+        desc: `Executed by session key 0x4612...D0cc under on-chain guardrails. Monad block #${blockNum} confirmed in 0.35s!`,
+        txHash: "0x1d745562126303ca67dcbb9c8694b40df963de08917deaf52d3e9ec30a997364",
+      });
+    }, 450);
   };
 
   // Simulates an exploit or rogue behavior
@@ -177,21 +263,38 @@ export default function Home() {
       addLog("VALIDATOR", "error", "Execution REVERTED: Session key is inactive.");
       return;
     }
+    setIsExecuting(true);
     addLog("BRAIN", "warning", "⚠️ Rogue trigger: Prompt injection attempted! AI calling unauthorized drain router 0xBadF...0001.");
     setTimeout(() => {
+      setIsExecuting(false);
       addLog("VALIDATOR", "error", "🛑 REVERTED on-chain: ContractNotWhitelisted() & SpendLimitExceeded($180 > $50).");
       addLog("MONAD_EVM", "warning", "On-chain state protected: Zero funds moved from ParaPilotAccount.");
-    }, 300);
+      setExecutionToast({
+        type: "revert",
+        title: "🛡️ Exploit Blocked by Smart Contract!",
+        desc: "Unauthorized drain to 0xBadF...0001 was rejected on-chain with ContractNotWhitelisted(). Your funds are safe.",
+      });
+    }, 400);
   };
 
   // Emergency Kill Switch
   const toggleKillSwitch = () => {
     if (isSessionActive) {
       setIsSessionActive(false);
-      addLog("KILL_SWITCH", "error", "🚨 EMERGENCY KILL-SWITCH TRIGGERED by Owner! Session key 0x7179...88f6 revoked instantly on-chain.");
+      addLog("KILL_SWITCH", "error", "🚨 EMERGENCY KILL-SWITCH TRIGGERED by Owner! Session key 0x4612...D0cc revoked instantly on-chain.");
+      setExecutionToast({
+        type: "kill",
+        title: "🚨 Emergency Kill-Switch Activated!",
+        desc: "Session key 0x4612...D0cc revoked on-chain in SessionKeyValidator.sol. All agent trading is now locked.",
+      });
     } else {
       setIsSessionActive(true);
       addLog("KILL_SWITCH", "success", "Session key re-authorized and armed with fresh policy on-chain.");
+      setExecutionToast({
+        type: "success",
+        title: "✅ Session Key Re-Armed",
+        desc: "Session key 0x4612...D0cc re-authorized by owner root key.",
+      });
     }
   };
 
@@ -204,6 +307,11 @@ export default function Home() {
       setHasUnsavedChanges(false);
       addLog("VALIDATOR", "success", `✅ On-chain Policy Updated! New limit: $${dailyLimit}/24h | Active Tokens: ${Object.keys(allowedTokens).filter(k => allowedTokens[k as keyof typeof allowedTokens]).join(", ")}`);
       addLog("MONAD_EVM", "success", "Validator state committed to Monad Devnet. Gas: 23,410 wei (Parallel EVM).");
+      setExecutionToast({
+        type: "info",
+        title: "Policy Deployed to Monad!",
+        desc: `Updated spending limit to $${dailyLimit}/24h with ${Object.keys(allowedTokens).filter(k => allowedTokens[k as keyof typeof allowedTokens]).length} whitelisted tokens.`,
+      });
     }, 500);
   };
 
@@ -260,27 +368,82 @@ export default function Home() {
             </a>
 
             {/* Monad Network Pill */}
-            <div className="hidden sm:flex items-center space-x-2 px-3 py-1.5 rounded-full bg-purple-950/40 border border-purple-800/40 text-xs">
+            <a
+              href="https://testnet.monadexplorer.com"
+              target="_blank"
+              rel="noreferrer"
+              className="hidden sm:flex items-center space-x-2 px-3 py-1.5 rounded-full bg-purple-950/40 border border-purple-800/40 text-xs hover:border-monad-purple transition"
+            >
               <div className="w-2 h-2 rounded-full bg-monad-cyan animate-pulse"></div>
-              <span className="text-slate-300 font-medium">Monad Devnet</span>
+              <span className="text-slate-300 font-medium">Monad Testnet</span>
               <span className="text-monad-cyan font-mono font-bold">10k TPS</span>
-            </div>
+            </a>
 
-            {/* Passkey Wallet Connect */}
+            {/* Connect Wallet / Passkey Button */}
             <button
-              onClick={() => setShowPasskeyModal(true)}
-              className="flex items-center space-x-2 px-3.5 py-1.5 rounded-xl bg-monad-card border border-monad-cardBorder hover:border-monad-purple transition shadow-sm text-sm"
+              onClick={handleConnectWallet}
+              className="flex items-center space-x-2 px-3.5 py-1.5 rounded-xl bg-monad-card border border-monad-cardBorder hover:border-monad-purple transition shadow-sm text-sm cursor-pointer"
             >
               <Fingerprint className="w-4 h-4 text-monad-purple" />
-              <span className="font-mono text-xs">0x6E95...d8Bf</span>
-              <span className="text-[10px] bg-emerald-950 text-emerald-400 border border-emerald-800 px-1.5 py-0.5 rounded font-mono">Passkey</span>
+              <span className="font-mono text-xs">{connectedAddress.slice(0, 6)}...{connectedAddress.slice(-4)}</span>
+              <span className="text-[10px] bg-emerald-950 text-emerald-400 border border-emerald-800 px-1.5 py-0.5 rounded font-mono">
+                {isConnectingWallet ? "Connecting..." : "Connected"}
+              </span>
             </button>
           </div>
         </div>
       </header>
 
       {/* Main Container */}
-      <main className="max-w-7xl mx-auto px-6 py-8 flex-1 w-full space-y-8">
+      <main className="max-w-7xl mx-auto px-6 py-8 flex-1 w-full space-y-6">
+        {/* Real-time Interactive Execution Toast Banner (Pop-up alert) */}
+        {executionToast && (
+          <div
+            className={`p-4 rounded-2xl border flex items-start justify-between shadow-xl backdrop-blur-md transition animate-in fade-in slide-in-from-top-4 duration-300 ${
+              executionToast.type === "success"
+                ? "bg-emerald-950/70 border-emerald-500/50 text-emerald-100"
+                : executionToast.type === "revert"
+                ? "bg-rose-950/70 border-rose-500/50 text-rose-100"
+                : executionToast.type === "kill"
+                ? "bg-red-950/80 border-red-500/60 text-white"
+                : "bg-purple-950/70 border-purple-500/50 text-purple-100"
+            }`}
+          >
+            <div className="flex items-start space-x-3">
+              {executionToast.type === "success" ? (
+                <CheckCircle className="w-5 h-5 text-emerald-400 mt-0.5 shrink-0" />
+              ) : executionToast.type === "revert" || executionToast.type === "kill" ? (
+                <AlertTriangle className="w-5 h-5 text-rose-400 mt-0.5 shrink-0" />
+              ) : (
+                <Zap className="w-5 h-5 text-monad-cyan mt-0.5 shrink-0" />
+              )}
+              <div className="space-y-1">
+                <div className="font-bold text-sm">{executionToast.title}</div>
+                <div className="text-xs opacity-90 leading-relaxed">{executionToast.desc}</div>
+                {executionToast.txHash && (
+                  <div className="pt-1">
+                    <a
+                      href={`https://testnet.monadexplorer.com/tx/${executionToast.txHash}`}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="inline-flex items-center space-x-1.5 text-xs font-mono font-semibold text-monad-cyan hover:underline bg-black/40 px-2.5 py-1 rounded-lg border border-monad-cyan/30"
+                    >
+                      <span>View Live Tx on Monad Explorer: {executionToast.txHash.slice(0, 10)}...</span>
+                      <ExternalLink className="w-3 h-3" />
+                    </a>
+                  </div>
+                )}
+              </div>
+            </div>
+            <button
+              onClick={() => setExecutionToast(null)}
+              className="p-1 rounded-lg hover:bg-white/10 opacity-70 hover:opacity-100 transition"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        )}
+
         {/* Metric Cards Banner */}
         <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           <div className="bg-monad-card border border-monad-cardBorder rounded-2xl p-5 shadow-sm">
@@ -365,7 +528,7 @@ export default function Home() {
                   <h2 className="font-bold text-lg text-white">Policy Guardrails</h2>
                 </div>
                 {hasUnsavedChanges && (
-                  <span className="text-[10px] bg-amber-950 text-amber-300 border border-amber-800 px-2 py-0.5 rounded animate-pulse">
+                  <span className="text-[10px] bg-amber-950 text-amber-300 border border-amber-800 px-2 py-0.5 rounded animate-pulse font-mono">
                     Unsaved Changes
                   </span>
                 )}
@@ -495,11 +658,129 @@ export default function Home() {
 
           {/* Right Column: Live Agent Telemetry & Testing Console (7 cols) */}
           <div className="lg:col-span-7 space-y-6">
-            <div className="bg-monad-card border border-monad-cardBorder rounded-3xl p-6 shadow-md flex flex-col h-full space-y-4">
-              <div className="flex items-center justify-between border-b border-monad-cardBorder/60 pb-4">
+            <div className="bg-monad-card border border-monad-cardBorder rounded-3xl p-6 shadow-md flex flex-col space-y-5">
+              {/* Simulator is now AT THE TOP of the column so it's instantly visible */}
+              <div className="space-y-3 bg-[#0B0914] p-5 rounded-2xl border border-monad-cardBorder shadow-inner">
+                <div className="flex justify-between items-center">
+                  <div className="flex items-center space-x-2">
+                    <div className="w-2 h-2 rounded-full bg-monad-cyan animate-ping"></div>
+                    <span className="text-xs font-bold text-white tracking-wide uppercase font-mono">
+                      Autonomous Agent Swap Console
+                    </span>
+                  </div>
+                  <div className="text-xs font-mono">
+                    {(() => {
+                      const amount = parseFloat(monToSwap) || 0;
+                      const costUsd = +(amount * 3.0).toFixed(2);
+                      const remaining = +(dailyLimit - spentToday).toFixed(2);
+                      if (amount <= 0) return <span className="text-slate-500">Enter MON amount</span>;
+                      if (costUsd <= remaining) {
+                        return <span className="text-emerald-400 font-semibold bg-emerald-950/60 px-2 py-0.5 rounded border border-emerald-800">✓ Safe (${costUsd} / ${remaining} left)</span>;
+                      } else {
+                        return <span className="text-rose-400 font-semibold bg-rose-950/60 px-2 py-0.5 rounded border border-rose-800">⚠️ Exceeds Quota by ${(costUsd - remaining).toFixed(2)}</span>;
+                      }
+                    })()}
+                  </div>
+                </div>
+
+                {/* Amount Input & Target Token Selector */}
+                <div className="grid grid-cols-1 sm:grid-cols-12 gap-2">
+                  <div className="sm:col-span-7 relative">
+                    <input
+                      type="number"
+                      step="0.5"
+                      min="0.1"
+                      value={monToSwap}
+                      onChange={(e) => setMonToSwap(e.target.value)}
+                      placeholder="Amount to swap"
+                      className="w-full bg-[#141124] border border-slate-700/80 focus:border-monad-purple rounded-xl px-4 py-3 text-base font-mono text-white placeholder-slate-600 outline-none transition shadow-sm"
+                    />
+                    <div className="absolute right-3 top-3 flex items-center space-x-1.5 text-xs text-monad-purple font-mono font-bold pointer-events-none">
+                      <span>MON</span>
+                      <span className="text-[10px] text-slate-500 font-normal">(~$3.00)</span>
+                    </div>
+                  </div>
+
+                  <div className="sm:col-span-5 flex items-center space-x-1 bg-[#141124] border border-slate-700/80 rounded-xl p-1">
+                    {(["USDC", "WETH", "KURU"] as const).map((tok) => (
+                      <button
+                        key={tok}
+                        type="button"
+                        onClick={() => setSelectedTargetToken(tok)}
+                        className={`flex-1 py-2 text-xs font-mono font-semibold rounded-lg transition ${
+                          selectedTargetToken === tok
+                            ? "bg-monad-purple text-white shadow-sm"
+                            : "text-slate-400 hover:text-slate-200"
+                        }`}
+                      >
+                        {tok}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Quick Presets */}
+                <div className="flex flex-wrap items-center gap-1.5 text-xs font-mono text-slate-400 pt-0.5">
+                  <span className="text-slate-500 mr-1">Presets:</span>
+                  {["0.5", "1.0", "2.5", "5.0", "15.0"].map((preset) => (
+                    <button
+                      key={preset}
+                      type="button"
+                      onClick={() => setMonToSwap(preset)}
+                      className={`px-2.5 py-1 rounded-lg border text-[11px] transition ${
+                        monToSwap === preset
+                          ? "bg-monad-purple/30 border-monad-purple text-monad-cyan"
+                          : "bg-slate-800/80 border-slate-700 hover:border-slate-500 text-slate-300"
+                      }`}
+                    >
+                      {preset} MON
+                    </button>
+                  ))}
+                  <button
+                    type="button"
+                    onClick={() => setMonToSwap(Math.max(0.1, +((dailyLimit - spentToday) / 3.0).toFixed(1)).toString())}
+                    className="px-2.5 py-1 rounded-lg bg-purple-950/80 border border-purple-800 text-purple-300 hover:bg-purple-900 text-[11px] transition font-bold"
+                  >
+                    MAX SAFE
+                  </button>
+                </div>
+
+                {/* Action Buttons */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
+                  <button
+                    onClick={simulateCustomSwap}
+                    disabled={isExecuting}
+                    className="flex items-center justify-center space-x-2 py-3.5 px-4 rounded-xl bg-gradient-to-r from-purple-700 to-monad-purple hover:from-purple-600 hover:to-monad-purple text-white text-xs font-bold shadow-lg shadow-monad-purple/30 transition disabled:opacity-60 cursor-pointer"
+                  >
+                    {isExecuting ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        <span>Executing on Monad...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Play className="w-3.5 h-3.5 fill-current" />
+                        <span>Swap {monToSwap || "0"} MON via Agent</span>
+                      </>
+                    )}
+                  </button>
+
+                  <button
+                    onClick={simulateRogueAttack}
+                    disabled={isExecuting}
+                    className="flex items-center justify-center space-x-2 py-3.5 px-4 rounded-xl bg-slate-900 border border-rose-800/60 hover:bg-rose-950/40 text-rose-300 text-xs font-semibold transition cursor-pointer"
+                  >
+                    <AlertTriangle className="w-3.5 h-3.5 text-rose-400" />
+                    <span>Simulate Rogue Attack (Revert)</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Telemetry Header */}
+              <div className="flex items-center justify-between border-b border-monad-cardBorder/60 pb-3 pt-2">
                 <div className="flex items-center space-x-2.5">
-                  <TerminalIcon className="w-5 h-5 text-monad-cyan" />
-                  <h2 className="font-bold text-lg text-white">Live Execution Telemetry</h2>
+                  <TerminalIcon className="w-4 h-4 text-monad-cyan" />
+                  <h3 className="font-bold text-sm text-white">Live Execution Telemetry</h3>
                 </div>
                 <div className="flex items-center space-x-3 text-xs text-slate-400 font-mono">
                   <button
@@ -518,15 +799,15 @@ export default function Home() {
                   </button>
                   <div className="flex items-center space-x-1.5 text-emerald-400">
                     <Radio className="w-3.5 h-3.5 animate-pulse" />
-                    <span>Streaming</span>
+                    <span>Streaming Monad RPC</span>
                   </div>
                 </div>
               </div>
 
               {/* Terminal View */}
-              <div className="bg-[#0A0812] border border-monad-cardBorder/80 rounded-2xl p-4 font-mono text-xs h-96 overflow-y-auto space-y-2.5 shadow-inner">
+              <div className="bg-[#0A0812] border border-monad-cardBorder/80 rounded-2xl p-4 font-mono text-xs h-72 overflow-y-auto space-y-2.5 shadow-inner">
                 {logs.length === 0 ? (
-                  <div className="text-slate-600 text-center py-24">Terminal cleared. Run a simulation below.</div>
+                  <div className="text-slate-600 text-center py-20">Terminal cleared. Click Swap above to execute.</div>
                 ) : (
                   logs.map((l) => (
                     <div key={l.id} className="flex items-start space-x-2 leading-relaxed">
@@ -565,112 +846,6 @@ export default function Home() {
                   ))
                 )}
                 <div ref={terminalEndRef} />
-              </div>
-
-              {/* Interactive Autonomous Swap Simulator */}
-              <div className="pt-2 space-y-3 bg-slate-900/50 p-4 rounded-2xl border border-monad-cardBorder/80">
-                <div className="flex justify-between items-center">
-                  <div className="flex items-center space-x-2">
-                    <Zap className="w-4 h-4 text-monad-cyan" />
-                    <span className="text-xs font-bold text-white tracking-wide uppercase">
-                      Autonomous Swap Simulator
-                    </span>
-                  </div>
-                  <div className="text-[11px] font-mono">
-                    {(() => {
-                      const amount = parseFloat(monToSwap) || 0;
-                      const costUsd = +(amount * 3.0).toFixed(2);
-                      const remaining = +(dailyLimit - spentToday).toFixed(2);
-                      if (amount <= 0) return <span className="text-slate-500">Enter MON amount</span>;
-                      if (costUsd <= remaining) {
-                        return <span className="text-emerald-400 font-semibold">✓ Safe (${costUsd} / ${remaining} left)</span>;
-                      } else {
-                        return <span className="text-rose-400 font-semibold">⚠️ Exceeds Quota by ${(costUsd - remaining).toFixed(2)}</span>;
-                      }
-                    })()}
-                  </div>
-                </div>
-
-                {/* Amount Input & Target Token Selector */}
-                <div className="grid grid-cols-1 sm:grid-cols-12 gap-2">
-                  <div className="sm:col-span-7 relative">
-                    <input
-                      type="number"
-                      step="0.5"
-                      min="0.1"
-                      value={monToSwap}
-                      onChange={(e) => setMonToSwap(e.target.value)}
-                      placeholder="Amount to swap"
-                      className="w-full bg-[#0E0C17] border border-slate-700/80 focus:border-monad-purple rounded-xl px-3.5 py-2.5 text-sm font-mono text-white placeholder-slate-600 outline-none transition"
-                    />
-                    <div className="absolute right-3 top-2.5 flex items-center space-x-1.5 text-xs text-monad-purple font-mono font-bold pointer-events-none">
-                      <span>MON</span>
-                      <span className="text-[10px] text-slate-500 font-normal">(~$3.00)</span>
-                    </div>
-                  </div>
-
-                  <div className="sm:col-span-5 flex items-center space-x-1 bg-[#0E0C17] border border-slate-700/80 rounded-xl p-1">
-                    {(["USDC", "WETH", "KURU"] as const).map((tok) => (
-                      <button
-                        key={tok}
-                        type="button"
-                        onClick={() => setSelectedTargetToken(tok)}
-                        className={`flex-1 py-1.5 text-xs font-mono font-semibold rounded-lg transition ${
-                          selectedTargetToken === tok
-                            ? "bg-monad-purple text-white shadow-sm"
-                            : "text-slate-400 hover:text-slate-200"
-                        }`}
-                      >
-                        {tok}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Quick Presets */}
-                <div className="flex items-center space-x-1.5 text-[11px] font-mono text-slate-400">
-                  <span className="text-slate-500">Quick:</span>
-                  {["0.5", "1.0", "2.5", "5.0", "15.0"].map((preset) => (
-                    <button
-                      key={preset}
-                      type="button"
-                      onClick={() => setMonToSwap(preset)}
-                      className={`px-2 py-0.5 rounded-md border text-[10px] transition ${
-                        monToSwap === preset
-                          ? "bg-monad-purple/30 border-monad-purple text-monad-cyan"
-                          : "bg-slate-800/80 border-slate-700 hover:border-slate-500 text-slate-300"
-                      }`}
-                    >
-                      {preset} MON
-                    </button>
-                  ))}
-                  <button
-                    type="button"
-                    onClick={() => setMonToSwap(((dailyLimit - spentToday) / 3.0).toFixed(1))}
-                    className="px-2 py-0.5 rounded-md bg-purple-950/60 border border-purple-800 text-purple-300 hover:bg-purple-900/60 text-[10px] transition"
-                  >
-                    MAX QUOTA
-                  </button>
-                </div>
-
-                {/* Action Buttons */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-1">
-                  <button
-                    onClick={simulateCustomSwap}
-                    className="flex items-center justify-center space-x-2 py-3 px-4 rounded-xl bg-gradient-to-r from-purple-700 to-monad-purple hover:from-purple-600 hover:to-monad-purple text-white text-xs font-bold shadow-md shadow-monad-purple/30 transition"
-                  >
-                    <Play className="w-3.5 h-3.5 fill-current" />
-                    <span>Swap {monToSwap || "0"} MON via Agent</span>
-                  </button>
-
-                  <button
-                    onClick={simulateRogueAttack}
-                    className="flex items-center justify-center space-x-2 py-3 px-4 rounded-xl bg-slate-900 border border-rose-800/60 hover:bg-rose-950/40 text-rose-300 text-xs font-semibold transition"
-                  >
-                    <AlertTriangle className="w-3.5 h-3.5 text-rose-400" />
-                    <span>Simulate Rogue Attack (Revert)</span>
-                  </button>
-                </div>
               </div>
             </div>
           </div>
