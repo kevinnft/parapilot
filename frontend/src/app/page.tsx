@@ -38,6 +38,7 @@ import {
   Eye,
   EyeOff,
   KeyRound,
+  Plus,
 } from "lucide-react";
 import { generateMnemonic, english, mnemonicToAccount, generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 
@@ -52,6 +53,7 @@ interface LogEntry {
 export default function Home() {
   // Policy State
   const [dailyLimit, setDailyLimit] = useState(50);
+  const [isUnlimitedLimit, setIsUnlimitedLimit] = useState(false);
   const [spentToday, setSpentToday] = useState(0.0);
   const [isSessionActive, setIsSessionActive] = useState(false);
   const [activeSessionKey, setActiveSessionKey] = useState<string | null>(null);
@@ -105,12 +107,17 @@ export default function Home() {
     WETH: true,
     KURU: true,
   });
-  const [whitelistedContracts, setWhitelistedContracts] = useState({
+  const [whitelistedContracts, setWhitelistedContracts] = useState<Record<string, { address: string; active: boolean }>>({
     "MockDEX Router (Multi-Token)": { address: "0xbc12983288B4225205Dc53702B1eba6298f94376", active: true },
     "ParaPilotAccount": { address: "0x8A55d40977C49D4Ac5C569ebA4631D4e9026C592", active: true },
     "SessionKeyValidator": { address: "0x01022d952087B7FBacc8DA53478B0F555Fe457C4", active: true },
     "USDC Contract": { address: "0xd4309703c783E671F5Ef61630Cb576916cE03200", active: true },
   });
+
+  // Manual Protocol Router Whitelist Add Form State
+  const [newRouterName, setNewRouterName] = useState("");
+  const [newRouterAddress, setNewRouterAddress] = useState("");
+  const [showAddRouterForm, setShowAddRouterForm] = useState(false);
 
   // Real Zerion & Monad Live Portfolio Data
   const [portfolioTokens, setPortfolioTokens] = useState<any[]>([
@@ -652,22 +659,34 @@ export default function Home() {
       KURU: 0.20,
     };
 
+    const tokenDecimals: Record<string, number> = {
+      MON: 18,
+      USDC: 6,
+      WETH: 18,
+      KURU: 18,
+    };
+
     const srcPrice = tokenPrices[sourceToken] || 1.0;
     const dstPrice = tokenPrices[targetToken] || 1.0;
     const spendUsd = +(amountNum * srcPrice).toFixed(2);
     const tokenReceived = +((amountNum * srcPrice * 0.995) / dstPrice).toFixed(targetToken === "WETH" ? 6 : 4);
-    const remainingQuota = +(dailyLimit - spentToday).toFixed(2);
+    const outDec = tokenDecimals[targetToken] || 18;
+    const expectedOutUnits = BigInt(Math.floor(tokenReceived * 10 ** outDec));
 
-    if (spentToday + spendUsd > dailyLimit) {
-      addLog("BRAIN", "warning", `Trade of ${amountNum} ${sourceToken} ($${spendUsd}) exceeds 24h limit.`);
-      addLog("VALIDATOR", "error", `🛑 REVERTED: SpendLimitExceeded() - Attempted $${spendUsd} with only $${remainingQuota} quota remaining.`);
-      addLog("MONAD_EVM", "warning", "On-chain state protected: Zero funds moved from ParaPilotAccount.");
-      setExecutionToast({
-        type: "revert",
-        title: "🛑 Reverted: SpendLimitExceeded()",
-        desc: `Attempted $${spendUsd} USD, but only $${remainingQuota} remains in the 24h guardrail quota.`,
-      });
-      return;
+    // Verify limit only if NOT unlimited
+    if (!isUnlimitedLimit) {
+      const remainingQuota = +(dailyLimit - spentToday).toFixed(2);
+      if (spentToday + spendUsd > dailyLimit) {
+        addLog("BRAIN", "warning", `Trade of ${amountNum} ${sourceToken} ($${spendUsd}) exceeds 24h limit.`);
+        addLog("VALIDATOR", "error", `🛑 REVERTED: SpendLimitExceeded() - Attempted $${spendUsd} with only $${remainingQuota} quota remaining.`);
+        addLog("MONAD_EVM", "warning", "On-chain state protected: Zero funds moved from ParaPilotAccount.");
+        setExecutionToast({
+          type: "revert",
+          title: "🛑 Reverted: SpendLimitExceeded()",
+          desc: `Attempted $${spendUsd} USD, but only $${remainingQuota} remains in the 24h guardrail quota. Check 'Tanpa Batas' to remove limit.`,
+        });
+        return;
+      }
     }
 
     setIsExecuting(true);
@@ -695,21 +714,19 @@ export default function Home() {
         if (sourceToken === "MON") {
           // swapExactETHForTokens(address tokenOut, uint256 minAmountOut) -> selector: 0xb79c48e5
           const dstAddr = tokenAddresses[targetToken];
-          calldata = `0xb79c48e5${dstAddr.slice(2).toLowerCase().padStart(64, "0")}${"0".padStart(64, "0")}`;
+          calldata = `0xb79c48e5${dstAddr.slice(2).toLowerCase().padStart(64, "0")}${expectedOutUnits.toString(16).padStart(64, "0")}`;
           weiVal = "0x" + BigInt(Math.floor(amountNum * 1e18)).toString(16);
         } else if (targetToken === "MON") {
           // swapExactTokensForETH(address tokenIn, uint256 amountIn, uint256 minAmountOut) -> selector: 0xc038847a
           const srcAddr = tokenAddresses[sourceToken];
-          const decimals = sourceToken === "USDC" ? 6 : 18;
-          const inUnits = BigInt(Math.floor(amountNum * 10 ** decimals));
-          calldata = `0xc038847a${srcAddr.slice(2).toLowerCase().padStart(64, "0")}${inUnits.toString(16).padStart(64, "0")}${"0".padStart(64, "0")}`;
+          const inUnits = BigInt(Math.floor(amountNum * 10 ** (tokenDecimals[sourceToken] || 18)));
+          calldata = `0xc038847a${srcAddr.slice(2).toLowerCase().padStart(64, "0")}${inUnits.toString(16).padStart(64, "0")}${expectedOutUnits.toString(16).padStart(64, "0")}`;
         } else {
           // swapExactTokensForTokens(address tokenIn, address tokenOut, uint256 amountIn, uint256 minAmountOut) -> selector: 0x89fe039b
           const srcAddr = tokenAddresses[sourceToken];
           const dstAddr = tokenAddresses[targetToken];
-          const decimals = sourceToken === "USDC" ? 6 : 18;
-          const inUnits = BigInt(Math.floor(amountNum * 10 ** decimals));
-          calldata = `0x89fe039b${srcAddr.slice(2).toLowerCase().padStart(64, "0")}${dstAddr.slice(2).toLowerCase().padStart(64, "0")}${inUnits.toString(16).padStart(64, "0")}${"0".padStart(64, "0")}`;
+          const inUnits = BigInt(Math.floor(amountNum * 10 ** (tokenDecimals[sourceToken] || 18)));
+          calldata = `0x89fe039b${srcAddr.slice(2).toLowerCase().padStart(64, "0")}${dstAddr.slice(2).toLowerCase().padStart(64, "0")}${inUnits.toString(16).padStart(64, "0")}${expectedOutUnits.toString(16).padStart(64, "0")}`;
         }
 
         const txHash = await provider.request({
@@ -844,14 +861,52 @@ export default function Home() {
     setTimeout(() => {
       setIsSavingPolicy(false);
       setHasUnsavedChanges(false);
-      addLog("VALIDATOR", "success", `✅ On-chain Policy Updated! New limit: $${dailyLimit}/24h | Active Tokens: ${Object.keys(allowedTokens).filter(k => allowedTokens[k as keyof typeof allowedTokens]).join(", ")}`);
-      addLog("MONAD_EVM", "success", "Validator state committed to Monad Devnet. Gas: 23,410 wei (Parallel EVM).");
+      const limitStr = isUnlimitedLimit ? "Unlimited (Tanpa Batas)" : `$${dailyLimit}/24h`;
+      addLog("VALIDATOR", "success", `✅ On-chain Policy Updated! New limit: ${limitStr} | Routers: ${Object.keys(whitelistedContracts).length} | Active Tokens: ${Object.keys(allowedTokens).filter(k => allowedTokens[k as keyof typeof allowedTokens]).join(", ")}`);
+      addLog("MONAD_EVM", "success", "Validator state committed to Monad Parallel EVM.");
       setExecutionToast({
         type: "info",
         title: "Policy Deployed to Monad!",
-        desc: `Updated spending limit to $${dailyLimit}/24h with ${Object.keys(allowedTokens).filter(k => allowedTokens[k as keyof typeof allowedTokens]).length} whitelisted tokens.`,
+        desc: `Updated spending limit to ${limitStr} with ${Object.keys(whitelistedContracts).length} whitelisted protocol routers.`,
       });
     }, 500);
+  };
+
+  // Add Protocol Router Manually
+  const handleAddRouter = () => {
+    const cleanName = newRouterName.trim();
+    const cleanAddr = newRouterAddress.trim();
+
+    if (!cleanName) {
+      alert("Please enter a protocol name (e.g. Kuru DEX Router, Ambient Finance, Uniswap V3).");
+      return;
+    }
+    if (!cleanAddr.startsWith("0x") || cleanAddr.length !== 42) {
+      alert("Please enter a valid 42-character Ethereum/Monad contract address (0x...).");
+      return;
+    }
+
+    setWhitelistedContracts((prev) => ({
+      ...prev,
+      [cleanName]: { address: cleanAddr, active: true },
+    }));
+
+    setNewRouterName("");
+    setNewRouterAddress("");
+    setShowAddRouterForm(false);
+    setHasUnsavedChanges(true);
+    addLog("POLICY", "success", `Added new protocol router: ${cleanName} (${cleanAddr.slice(0, 6)}...${cleanAddr.slice(-4)})`);
+  };
+
+  // Remove Protocol Router Manually
+  const handleRemoveRouter = (routerName: string) => {
+    setWhitelistedContracts((prev) => {
+      const updated = { ...prev };
+      delete updated[routerName];
+      return updated;
+    });
+    setHasUnsavedChanges(true);
+    addLog("POLICY", "warning", `Removed protocol router from whitelist: ${routerName}`);
   };
 
   // Export logs
@@ -1049,12 +1104,19 @@ export default function Home() {
               <Coins className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-monad-purple" />
             </div>
             <div className="text-sm sm:text-lg lg:text-xl font-bold font-mono">
-              ${spentToday.toFixed(2)} <span className="text-[10px] sm:text-xs font-normal text-slate-400">/ ${dailyLimit}</span>
+              {isUnlimitedLimit ? (
+                <span className="text-monad-cyan">∞ Unlimited</span>
+              ) : (
+                <>
+                  ${spentToday.toFixed(2)}{" "}
+                  <span className="text-[10px] sm:text-xs font-normal text-slate-400">/ ${dailyLimit}</span>
+                </>
+              )}
             </div>
             <div className="w-full bg-slate-800 h-1.5 sm:h-2 rounded-full mt-2.5 sm:mt-3 overflow-hidden">
               <div
                 className="h-full bg-gradient-to-r from-monad-purple to-monad-cyan transition-all duration-300"
-                style={{ width: `${Math.min(100, (spentToday / dailyLimit) * 100)}%` }}
+                style={{ width: isUnlimitedLimit ? "100%" : `${Math.min(100, (spentToday / dailyLimit) * 100)}%` }}
               ></div>
             </div>
           </div>
@@ -1116,31 +1178,58 @@ export default function Home() {
                 )}
               </div>
 
-              {/* Slider: Daily Spending Limit */}
+              {/* Slider & Unlimited Checkbox: Daily Spending Limit */}
               <div className="space-y-3">
                 <div className="flex justify-between items-center text-sm">
                   <span className="text-slate-300 font-medium">Max Spend per 24 Hours</span>
                   <span className="font-mono font-bold text-monad-cyan text-base">
-                    ${dailyLimit} USD
+                    {isUnlimitedLimit ? "∞ Unlimited (Tanpa Batas)" : `$${dailyLimit} USD`}
                   </span>
                 </div>
-                <input
-                  type="range"
-                  min="10"
-                  max="500"
-                  step="10"
-                  value={dailyLimit}
-                  onChange={(e) => {
-                    setDailyLimit(Number(e.target.value));
-                    setHasUnsavedChanges(true);
-                  }}
-                  className="w-full accent-monad-purple cursor-pointer"
-                />
-                <div className="flex justify-between text-[11px] text-slate-500 font-mono">
-                  <span>$10 min</span>
-                  <span>$250</span>
-                  <span>$500 max</span>
-                </div>
+
+                {/* Tanpa Batas (Unlimited) Checkbox */}
+                <label className="flex items-center space-x-2.5 p-2.5 rounded-xl bg-slate-900/80 border border-slate-800 cursor-pointer hover:border-monad-purple/50 transition select-none">
+                  <input
+                    type="checkbox"
+                    checked={isUnlimitedLimit}
+                    onChange={(e) => {
+                      setIsUnlimitedLimit(e.target.checked);
+                      setHasUnsavedChanges(true);
+                    }}
+                    className="w-4 h-4 rounded accent-monad-purple cursor-pointer"
+                  />
+                  <div className="flex-1 flex items-center justify-between">
+                    <span className="text-xs font-semibold text-white font-mono flex items-center space-x-1.5">
+                      <span>Tanpa Batas (Unlimited Quota)</span>
+                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-purple-950 text-monad-cyan border border-purple-800 font-bold">
+                        ∞ No Cap
+                      </span>
+                    </span>
+                    <span className="text-[11px] text-slate-400 font-mono">Bypass $500 max</span>
+                  </div>
+                </label>
+
+                {!isUnlimitedLimit && (
+                  <>
+                    <input
+                      type="range"
+                      min="10"
+                      max="500"
+                      step="10"
+                      value={dailyLimit}
+                      onChange={(e) => {
+                        setDailyLimit(Number(e.target.value));
+                        setHasUnsavedChanges(true);
+                      }}
+                      className="w-full accent-monad-purple cursor-pointer"
+                    />
+                    <div className="flex justify-between text-[11px] text-slate-500 font-mono">
+                      <span>$10 min</span>
+                      <span>$250</span>
+                      <span>$500 max</span>
+                    </div>
+                  </>
+                )}
               </div>
 
               {/* Allowed Tokens */}
@@ -1176,29 +1265,97 @@ export default function Home() {
                 </div>
               </div>
 
-              {/* Whitelisted Target Protocols */}
+              {/* Whitelisted Target Protocols (Manual Add & Delete) */}
               <div className="space-y-3">
-                <label className="text-sm text-slate-300 font-medium block">
-                  Approved Protocol Routers
-                </label>
-                <div className="space-y-2">
-                  {Object.entries(whitelistedContracts).map(([name, info]) => (
-                    <div
-                      key={name}
-                      className="flex items-center justify-between px-3.5 py-2.5 rounded-xl bg-slate-900/60 border border-slate-800/80 text-xs"
-                    >
-                      <div className="flex items-center space-x-2">
-                        <ArrowRightLeft className="w-3.5 h-3.5 text-monad-purple" />
-                        <div>
-                          <div className="font-medium text-slate-200">{name}</div>
-                          <div className="font-mono text-[10px] text-slate-500">{info.address.slice(0, 10)}...{info.address.slice(-4)}</div>
+                <div className="flex items-center justify-between">
+                  <label className="text-sm text-slate-300 font-medium block">
+                    Approved Protocol Routers
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => setShowAddRouterForm(!showAddRouterForm)}
+                    className="text-xs text-monad-cyan hover:underline flex items-center space-x-1 font-mono cursor-pointer"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>{showAddRouterForm ? "Cancel" : "+ Add Router"}</span>
+                  </button>
+                </div>
+
+                {/* Form to Add Router Manually */}
+                {showAddRouterForm && (
+                  <div className="p-3.5 rounded-2xl bg-slate-900/90 border border-monad-purple/50 space-y-2.5 animate-in fade-in zoom-in-95 duration-150">
+                    <div className="text-xs font-bold text-white font-mono flex items-center justify-between">
+                      <span>Add Protocol Router</span>
+                      <span className="text-[10px] text-monad-purple font-normal">Monad Testnet</span>
+                    </div>
+                    <input
+                      type="text"
+                      value={newRouterName}
+                      onChange={(e) => setNewRouterName(e.target.value)}
+                      placeholder="Protocol Name (e.g. Kuru DEX Router)"
+                      className="w-full bg-[#141124] border border-slate-700/80 focus:border-monad-purple rounded-xl px-3 py-2 text-xs font-mono text-white placeholder-slate-500 outline-none"
+                    />
+                    <input
+                      type="text"
+                      value={newRouterAddress}
+                      onChange={(e) => setNewRouterAddress(e.target.value)}
+                      placeholder="Contract Address (0x...)"
+                      className="w-full bg-[#141124] border border-slate-700/80 focus:border-monad-purple rounded-xl px-3 py-2 text-xs font-mono text-white placeholder-slate-500 outline-none"
+                    />
+                    <div className="flex items-center space-x-2 pt-1">
+                      <button
+                        type="button"
+                        onClick={handleAddRouter}
+                        className="flex-1 py-2 rounded-xl bg-monad-purple hover:bg-purple-600 text-white font-bold text-xs font-mono transition shadow-sm cursor-pointer"
+                      >
+                        Add to Whitelist
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setShowAddRouterForm(false)}
+                        className="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-mono transition cursor-pointer"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Routers List with Delete Button */}
+                <div className="space-y-2 max-h-60 overflow-y-auto pr-0.5">
+                  {Object.entries(whitelistedContracts).length === 0 ? (
+                    <div className="text-center py-4 text-xs font-mono text-slate-500 border border-dashed border-slate-800 rounded-xl">
+                      No routers whitelisted. Click "+ Add Router" above.
+                    </div>
+                  ) : (
+                    Object.entries(whitelistedContracts).map(([name, info]) => (
+                      <div
+                        key={name}
+                        className="flex items-center justify-between px-3.5 py-2.5 rounded-xl bg-slate-900/60 border border-slate-800/80 text-xs group hover:border-slate-700 transition"
+                      >
+                        <div className="flex items-center space-x-2 truncate mr-2">
+                          <ArrowRightLeft className="w-3.5 h-3.5 text-monad-purple shrink-0" />
+                          <div className="truncate">
+                            <div className="font-medium text-slate-200 truncate">{name}</div>
+                            <div className="font-mono text-[10px] text-slate-500">{info.address.slice(0, 10)}...{info.address.slice(-4)}</div>
+                          </div>
+                        </div>
+                        <div className="flex items-center space-x-2 shrink-0">
+                          <span className="px-2 py-0.5 rounded bg-emerald-950/80 text-emerald-400 border border-emerald-800/50 text-[10px] font-mono">
+                            Whitelisted
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveRouter(name)}
+                            className="p-1 rounded-lg hover:bg-rose-950/80 text-slate-500 hover:text-rose-400 transition cursor-pointer"
+                            title={`Remove ${name}`}
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
                         </div>
                       </div>
-                      <span className="px-2 py-0.5 rounded bg-emerald-950/80 text-emerald-400 border border-emerald-800/50 text-[10px] font-mono">
-                        Whitelisted
-                      </span>
-                    </div>
-                  ))}
+                    ))
+                  )}
                 </div>
               </div>
 

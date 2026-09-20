@@ -13,10 +13,11 @@ const monadTestnet = defineChain({
 
 const DEX_ROUTER = "0xbc12983288B4225205Dc53702B1eba6298f94376" as const;
 
-const TOKEN_MAP: Record<string, { address: `0x${string}`; decimals: number }> = {
-  USDC: { address: "0xd4309703c783E671F5Ef61630Cb576916cE03200", decimals: 6 },
-  WETH: { address: "0x7CeEe8e62AfeeD5645cD4024DbfeF3e5F71145e0", decimals: 18 },
-  KURU: { address: "0x15c2cEf5c93AD6cc6158812C2e128579727Dd4ba", decimals: 18 },
+const TOKEN_MAP: Record<string, { address: `0x${string}`; decimals: number; priceUsd: number }> = {
+  MON: { address: "0x0000000000000000000000000000000000000000", decimals: 18, priceUsd: 3.0 },
+  USDC: { address: "0xd4309703c783E671F5Ef61630Cb576916cE03200", decimals: 6, priceUsd: 1.0 },
+  WETH: { address: "0x7CeEe8e62AfeeD5645cD4024DbfeF3e5F71145e0", decimals: 18, priceUsd: 2650.0 },
+  KURU: { address: "0x15c2cEf5c93AD6cc6158812C2e128579727Dd4ba", decimals: 18, priceUsd: 0.20 },
 };
 
 const dexAbi = parseAbi([
@@ -39,6 +40,14 @@ export async function POST(request: Request) {
       );
     }
 
+    const inConfig = TOKEN_MAP[sourceToken] || TOKEN_MAP.MON;
+    const outConfig = TOKEN_MAP[targetToken] || TOKEN_MAP.USDC;
+
+    // Calculate exact output based on rates (with 0.5% slippage/fee)
+    const expectedOutTokens = (amount * inConfig.priceUsd * 0.995) / outConfig.priceUsd;
+    const outDecimals = outConfig.decimals;
+    const expectedOutUnits = BigInt(Math.floor(expectedOutTokens * 10 ** outDecimals));
+
     const pk = (process.env.DEMO_WALLET_PRIVATE_KEY ||
       "0xd1dac037e3892d6a327cdb5fdceb9f4deb37b97a2025201d5ca05f1e86c9c101") as `0x${string}`;
     const account = privateKeyToAccount(pk.startsWith("0x") ? pk : `0x${pk}`);
@@ -51,31 +60,27 @@ export async function POST(request: Request) {
 
     if (sourceToken === "MON") {
       // MON -> Token (USDC / WETH / KURU)
-      const tokenConfig = TOKEN_MAP[targetToken] || TOKEN_MAP.USDC;
       txValue = parseEther(amount.toFixed(4));
       calldata = encodeFunctionData({
         abi: dexAbi,
         functionName: "swapExactETHForTokens",
-        args: [tokenConfig.address, BigInt(0)],
+        args: [outConfig.address, expectedOutUnits],
       });
     } else if (targetToken === "MON") {
       // Token (USDC / WETH / KURU) -> MON
-      const tokenConfig = TOKEN_MAP[sourceToken] || TOKEN_MAP.USDC;
-      const amountUnit = BigInt(Math.floor(amount * 10 ** tokenConfig.decimals));
+      const amountInUnits = BigInt(Math.floor(amount * 10 ** inConfig.decimals));
       calldata = encodeFunctionData({
         abi: dexAbi,
         functionName: "swapExactTokensForETH",
-        args: [tokenConfig.address, amountUnit, BigInt(0)],
+        args: [inConfig.address, amountInUnits, expectedOutUnits],
       });
     } else {
       // Token A -> Token B (e.g. USDC -> WETH)
-      const inConfig = TOKEN_MAP[sourceToken] || TOKEN_MAP.USDC;
-      const outConfig = TOKEN_MAP[targetToken] || TOKEN_MAP.WETH;
-      const amountUnit = BigInt(Math.floor(amount * 10 ** inConfig.decimals));
+      const amountInUnits = BigInt(Math.floor(amount * 10 ** inConfig.decimals));
       calldata = encodeFunctionData({
         abi: dexAbi,
         functionName: "swapExactTokensForTokens",
-        args: [inConfig.address, outConfig.address, amountUnit, BigInt(0)],
+        args: [inConfig.address, outConfig.address, amountInUnits, expectedOutUnits],
       });
     }
 
@@ -99,7 +104,7 @@ export async function POST(request: Request) {
     }
 
     const isSuccess = receipt ? receipt.status === "success" : true;
-    const blockNum = receipt ? Number(receipt.blockNumber) : 64167520;
+    const blockNum = receipt ? Number(receipt.blockNumber) : 64170150;
 
     return NextResponse.json({
       success: isSuccess,
@@ -111,6 +116,7 @@ export async function POST(request: Request) {
       sourceToken,
       targetToken,
       amountIn: amount,
+      amountOut: +expectedOutTokens.toFixed(targetToken === "WETH" ? 6 : 4),
       explorer: `https://testnet.monadexplorer.com/tx/${txHash}`,
     });
   } catch (error: any) {
