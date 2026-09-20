@@ -85,6 +85,11 @@ export default function Home() {
   const [copiedContract, setCopiedContract] = useState(false);
   const [copiedBackup, setCopiedBackup] = useState(false);
 
+  // Injected Provider & EIP-6963 Discovery State
+  const [hasOkx, setHasOkx] = useState(false);
+  const [hasMetaMask, setHasMetaMask] = useState(false);
+  const [eip6963Wallets, setEip6963Wallets] = useState<{ info: any; provider: any }[]>([]);
+
   // Real BIP-39 Mnemonic & Private Key Recovery State
   const [passkeyMnemonic, setPasskeyMnemonic] = useState<string>("");
   const [passkeyPrivateKey, setPasskeyPrivateKey] = useState<string>("");
@@ -287,10 +292,83 @@ export default function Home() {
     addLog("POLICY", "success", `Downloaded complete recovery backup bundle (.json) for ${connectedAddress.slice(0, 6)}...${connectedAddress.slice(-4)}`);
   };
 
+  // Helper to extract OKX provider
+  const getOkxProvider = () => {
+    if (typeof window === "undefined") return null;
+    const w = window as any;
+    const eip6963Okx = eip6963Wallets.find(
+      (item) => item.info?.rdns?.includes("okx") || item.info?.name?.toLowerCase().includes("okx")
+    )?.provider;
+    if (eip6963Okx) return eip6963Okx;
+    if (w.okxwallet) return w.okxwallet;
+    if (w.ethereum?.isOkxWallet || w.ethereum?.isOKExWallet) return w.ethereum;
+    if (w.ethereum?.providers?.length) {
+      const p = w.ethereum.providers.find((item: any) => item.isOkxWallet || item.isOKExWallet);
+      if (p) return p;
+    }
+    return null;
+  };
+
+  // Helper to extract MetaMask / Generic EVM provider
+  const getMetaMaskProvider = () => {
+    if (typeof window === "undefined") return null;
+    const w = window as any;
+    const eip6963MM = eip6963Wallets.find(
+      (item) => item.info?.rdns?.includes("metamask") || item.info?.name?.toLowerCase().includes("metamask")
+    )?.provider;
+    if (eip6963MM) return eip6963MM;
+    if (w.ethereum?.isMetaMask && !w.ethereum?.isOkxWallet && !w.ethereum?.isOKExWallet) return w.ethereum;
+    if (w.ethereum?.providers?.length) {
+      const p = w.ethereum.providers.find((item: any) => item.isMetaMask && !item.isOkxWallet && !item.isOKExWallet);
+      if (p) return p;
+    }
+    if (w.ethereum && !w.ethereum.isOkxWallet && !w.ethereum.isOKExWallet) return w.ethereum;
+    return null;
+  };
+
+  const getAnyBrowserProvider = () => {
+    if (typeof window === "undefined") return null;
+    const w = window as any;
+    if (eip6963Wallets.length > 0) return eip6963Wallets[0].provider;
+    return getOkxProvider() || getMetaMaskProvider() || w.ethereum || null;
+  };
+
   useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    // Check direct providers after DOM loads
+    const checkProviders = () => {
+      const okx = getOkxProvider();
+      const mm = getMetaMaskProvider();
+      setHasOkx(Boolean(okx));
+      setHasMetaMask(Boolean(mm));
+    };
+    checkProviders();
+    const timer = setTimeout(checkProviders, 600);
+
+    // EIP-6963 Multi-Injected Provider Discovery
+    const onAnnounceProvider = (event: any) => {
+      const detail = event.detail;
+      if (detail && detail.info && detail.provider) {
+        setEip6963Wallets((prev) => {
+          if (prev.some((p) => p.info.rdns === detail.info.rdns)) return prev;
+          return [...prev, detail];
+        });
+        if (detail.info.rdns?.includes("okx") || detail.info.name?.toLowerCase().includes("okx")) {
+          setHasOkx(true);
+        }
+        if (detail.info.rdns?.includes("metamask") || detail.info.name?.toLowerCase().includes("metamask")) {
+          setHasMetaMask(true);
+        }
+      }
+    };
+
+    window.addEventListener("eip6963:announceProvider", onAnnounceProvider);
+    window.dispatchEvent(new Event("eip6963:requestProvider"));
+
     // Check if user previously connected on this device
-    const savedAddr = typeof window !== "undefined" ? localStorage.getItem("parapilot_wallet_addr") : null;
-    const savedMethod = typeof window !== "undefined" ? (localStorage.getItem("parapilot_wallet_method") as any) : null;
+    const savedAddr = localStorage.getItem("parapilot_wallet_addr");
+    const savedMethod = localStorage.getItem("parapilot_wallet_method") as any;
 
     if (savedAddr) {
       setConnectedAddress(savedAddr);
@@ -321,69 +399,83 @@ export default function Home() {
         setActiveSessionKey(agentKey);
         setIsSessionActive(true);
       }
-    } else if (typeof window !== "undefined" && (window as any).ethereum) {
-      const eth = (window as any).ethereum;
-      eth.request({ method: "eth_accounts" })
-        .then((accounts: string[]) => {
-          if (accounts && accounts.length > 0) {
-            const addr = accounts[0];
-            let agentKey = localStorage.getItem(`parapilot_agent_key_${addr}`);
-            if (!agentKey) {
-              agentKey = privateKeyToAccount(generatePrivateKey()).address;
-              localStorage.setItem(`parapilot_agent_key_${addr}`, agentKey);
+    } else {
+      // Auto-detect if provider already authorized
+      const p = getAnyBrowserProvider();
+      if (p?.request) {
+        p.request({ method: "eth_accounts" })
+          .then((accounts: string[]) => {
+            if (accounts && accounts.length > 0) {
+              const addr = accounts[0];
+              let agentKey = localStorage.getItem(`parapilot_agent_key_${addr}`);
+              if (!agentKey) {
+                agentKey = privateKeyToAccount(generatePrivateKey()).address;
+                localStorage.setItem(`parapilot_agent_key_${addr}`, agentKey);
+              }
+              setConnectedAddress(addr);
+              setConnectionMethod("extension");
+              setActiveSessionKey(agentKey);
+              setIsSessionActive(true);
+              fetchMonadBalance(addr);
+              fetchWalletTokens(addr);
+              localStorage.setItem("parapilot_wallet_addr", addr);
+              localStorage.setItem("parapilot_wallet_method", "extension");
             }
-            setConnectedAddress(addr);
-            setConnectionMethod("extension");
-            setActiveSessionKey(agentKey);
-            setIsSessionActive(true);
-            fetchMonadBalance(addr);
-            fetchWalletTokens(addr);
-            localStorage.setItem("parapilot_wallet_addr", addr);
-            localStorage.setItem("parapilot_wallet_method", "extension");
-          }
-        })
-        .catch(() => {});
+          })
+          .catch(() => {});
+      }
     }
 
-    if (typeof window !== "undefined" && (window as any).ethereum?.on) {
-      const eth = (window as any).ethereum;
-      const handleAccounts = (accounts: string[]) => {
-        if (accounts && accounts.length > 0) {
-          const addr = accounts[0];
-          let agentKey = localStorage.getItem(`parapilot_agent_key_${addr}`);
-          if (!agentKey) {
-            agentKey = privateKeyToAccount(generatePrivateKey()).address;
-            localStorage.setItem(`parapilot_agent_key_${addr}`, agentKey);
-          }
-          setConnectedAddress(addr);
-          setConnectionMethod("extension");
-          setActiveSessionKey(agentKey);
-          setIsSessionActive(true);
-          fetchMonadBalance(addr);
-          fetchWalletTokens(addr);
-          localStorage.setItem("parapilot_wallet_addr", addr);
-          localStorage.setItem("parapilot_wallet_method", "extension");
-        } else {
-          disconnectWallet();
+    const handleAccounts = (accounts: string[]) => {
+      if (accounts && accounts.length > 0) {
+        const addr = accounts[0];
+        let agentKey = localStorage.getItem(`parapilot_agent_key_${addr}`);
+        if (!agentKey) {
+          agentKey = privateKeyToAccount(generatePrivateKey()).address;
+          localStorage.setItem(`parapilot_agent_key_${addr}`, agentKey);
         }
-      };
-      eth.on("accountsChanged", handleAccounts);
-      return () => {
-        eth.removeListener?.("accountsChanged", handleAccounts);
-      };
-    }
+        setConnectedAddress(addr);
+        setConnectionMethod("extension");
+        setActiveSessionKey(agentKey);
+        setIsSessionActive(true);
+        fetchMonadBalance(addr);
+        fetchWalletTokens(addr);
+        localStorage.setItem("parapilot_wallet_addr", addr);
+        localStorage.setItem("parapilot_wallet_method", "extension");
+      } else {
+        disconnectWallet();
+      }
+    };
+
+    const w = window as any;
+    if (w.ethereum?.on) w.ethereum.on("accountsChanged", handleAccounts);
+    if (w.okxwallet?.on) w.okxwallet.on("accountsChanged", handleAccounts);
+
+    return () => {
+      clearTimeout(timer);
+      window.removeEventListener("eip6963:announceProvider", onAnnounceProvider);
+      if (w.ethereum?.removeListener) w.ethereum.removeListener("accountsChanged", handleAccounts);
+      if (w.okxwallet?.removeListener) w.okxwallet.removeListener("accountsChanged", handleAccounts);
+    };
   }, []);
 
-  // Connect via Browser Extension (MetaMask / Rabby / OKX)
-  const connectBrowserWallet = async () => {
-    if (typeof window === "undefined" || !(window as any).ethereum) {
-      alert("No Web3 wallet extension detected. Please install MetaMask, Rabby, or open in a Web3 browser.");
+  // Connect with a specific provider
+  const connectWithProvider = async (provider: any, walletName: string = "Browser Wallet") => {
+    if (!provider) {
+      if (walletName.toLowerCase().includes("okx")) {
+        window.open("https://www.okx.com/web3", "_blank");
+        addLog("POLICY", "warning", "OKX Wallet extension not detected. Opening download page.");
+        alert("OKX Wallet extension is not detected in your browser.\n\nOpening https://www.okx.com/web3 so you can install or enable it.");
+      } else {
+        addLog("POLICY", "warning", `${walletName} extension not detected.`);
+        alert(`No ${walletName} extension detected in this browser.`);
+      }
       return;
     }
+
     try {
       setIsConnectingWallet(true);
-      const eth = (window as any).ethereum;
-      const accounts = await eth.request({ method: "eth_requestAccounts" });
+      const accounts = await provider.request({ method: "eth_requestAccounts" });
       if (accounts && accounts.length > 0) {
         const addr = accounts[0];
         let agentKey = localStorage.getItem(`parapilot_agent_key_${addr}`);
@@ -398,19 +490,26 @@ export default function Home() {
         setSpentToday(0.0);
         localStorage.setItem("parapilot_wallet_addr", addr);
         localStorage.setItem("parapilot_wallet_method", "extension");
+        localStorage.setItem("parapilot_wallet_name", walletName);
         fetchMonadBalance(addr);
         fetchWalletTokens(addr);
-        addLog("POLICY", "success", `Connected wallet: ${addr.slice(0, 6)}...${addr.slice(-4)}`);
+        addLog("POLICY", "success", `Connected ${walletName}: ${addr.slice(0, 6)}...${addr.slice(-4)}`);
         addLog("VALIDATOR", "success", `Session Key Armed for ${addr.slice(0, 6)}...: ${agentKey.slice(0, 6)}...${agentKey.slice(-4)}`);
       }
+
+      // Switch or Add Monad Testnet (Chain ID 10143 / 0x279f)
       try {
-        await eth.request({
+        await provider.request({
           method: "wallet_switchEthereumChain",
           params: [{ chainId: "0x279f" }],
         });
       } catch (switchErr: any) {
-        if (switchErr.code === 4902) {
-          await eth.request({
+        if (
+          switchErr.code === 4902 ||
+          switchErr?.data?.originalError?.code === 4902 ||
+          switchErr?.message?.includes("Unrecognized chain")
+        ) {
+          await provider.request({
             method: "wallet_addEthereumChain",
             params: [
               {
@@ -426,7 +525,7 @@ export default function Home() {
       }
       setShowWalletModal(false);
     } catch (err: any) {
-      console.error(err);
+      console.error("Provider connect error:", err);
       addLog("POLICY", "error", `Connection failed: ${err?.message || err}`);
     } finally {
       setIsConnectingWallet(false);
@@ -1316,41 +1415,119 @@ export default function Home() {
               </div>
             ) : (
               // Unconnected Login Options
-              <div className="space-y-3">
+              <div className="space-y-2.5">
                 <p className="text-xs text-slate-400">
-                  Select a method to connect your wallet or smart session key:
+                  Select your wallet to connect and arm an agent session key:
                 </p>
 
-                {/* Option 1: Browser Extension */}
+                {/* Option 1: OKX Wallet (Dedicated) */}
                 <button
-                  onClick={connectBrowserWallet}
+                  type="button"
+                  onClick={() => connectWithProvider(getOkxProvider(), "OKX Wallet")}
                   disabled={isConnectingWallet}
-                  className="w-full p-3.5 rounded-2xl bg-slate-900/90 border border-slate-800 hover:border-monad-purple/80 hover:bg-slate-800/50 transition flex items-center justify-between text-left group cursor-pointer"
+                  className="w-full p-3 sm:p-3.5 rounded-2xl bg-slate-900/90 border border-slate-800 hover:border-slate-400 hover:bg-slate-800/60 transition flex items-center justify-between text-left group cursor-pointer"
                 >
                   <div className="flex items-center space-x-3">
-                    <div className="w-9 h-9 rounded-xl bg-orange-500/10 border border-orange-500/30 flex items-center justify-center text-orange-400">
-                      <Wallet className="w-5 h-5" />
+                    <div className="w-9 h-9 rounded-xl bg-black border border-slate-700 flex items-center justify-center font-black text-white text-xs tracking-tighter font-mono shadow-sm group-hover:scale-105 transition">
+                      OKX
                     </div>
                     <div>
-                      <div className="text-sm font-semibold text-white group-hover:text-monad-cyan transition">
-                        Browser Wallet (MetaMask / Rabby / OKX)
+                      <div className="flex items-center space-x-2">
+                        <span className="text-sm font-semibold text-white group-hover:text-monad-cyan transition">
+                          OKX Wallet
+                        </span>
+                        {hasOkx && (
+                          <span className="text-[10px] bg-emerald-950 text-emerald-400 border border-emerald-800/80 px-1.5 py-0.2 rounded font-mono font-semibold">
+                            Detected
+                          </span>
+                        )}
                       </div>
                       <div className="text-[11px] text-slate-400">
-                        Connect with installed Web3 extension
+                        Connect with OKX browser extension
                       </div>
                     </div>
                   </div>
                   <ChevronRight className="w-4 h-4 text-slate-600 group-hover:text-white transition" />
                 </button>
 
-                {/* Option 2: Passkey */}
+                {/* Option 2: MetaMask / Rabby */}
                 <button
-                  onClick={connectPasskey}
+                  type="button"
+                  onClick={() => connectWithProvider(getMetaMaskProvider(), "MetaMask")}
                   disabled={isConnectingWallet}
-                  className="w-full p-3.5 rounded-2xl bg-slate-900/90 border border-slate-800 hover:border-monad-cyan/80 hover:bg-slate-800/50 transition flex items-center justify-between text-left group cursor-pointer"
+                  className="w-full p-3 sm:p-3.5 rounded-2xl bg-slate-900/90 border border-slate-800 hover:border-orange-500/60 hover:bg-slate-800/60 transition flex items-center justify-between text-left group cursor-pointer"
                 >
                   <div className="flex items-center space-x-3">
-                    <div className="w-9 h-9 rounded-xl bg-cyan-500/10 border border-cyan-500/30 flex items-center justify-center text-monad-cyan">
+                    <div className="w-9 h-9 rounded-xl bg-orange-500/10 border border-orange-500/30 flex items-center justify-center text-orange-400 group-hover:scale-105 transition">
+                      <Wallet className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <div className="flex items-center space-x-2">
+                        <span className="text-sm font-semibold text-white group-hover:text-monad-cyan transition">
+                          MetaMask / Rabby
+                        </span>
+                        {hasMetaMask && (
+                          <span className="text-[10px] bg-emerald-950 text-emerald-400 border border-emerald-800/80 px-1.5 py-0.2 rounded font-mono font-semibold">
+                            Detected
+                          </span>
+                        )}
+                      </div>
+                      <div className="text-[11px] text-slate-400">
+                        Connect standard Web3 EVM extension
+                      </div>
+                    </div>
+                  </div>
+                  <ChevronRight className="w-4 h-4 text-slate-600 group-hover:text-white transition" />
+                </button>
+
+                {/* Dynamic EIP-6963 Wallets (e.g. Phantom, Bitget, Coinbase) */}
+                {eip6963Wallets
+                  .filter((w) => {
+                    const n = w.info?.name?.toLowerCase() || "";
+                    const r = w.info?.rdns?.toLowerCase() || "";
+                    return !n.includes("okx") && !r.includes("okx") && !n.includes("metamask") && !r.includes("metamask");
+                  })
+                  .map((w) => (
+                    <button
+                      key={w.info.rdns || w.info.name}
+                      type="button"
+                      onClick={() => connectWithProvider(w.provider, w.info.name)}
+                      disabled={isConnectingWallet}
+                      className="w-full p-3 sm:p-3.5 rounded-2xl bg-slate-900/90 border border-slate-800 hover:border-monad-cyan/60 hover:bg-slate-800/60 transition flex items-center justify-between text-left group cursor-pointer"
+                    >
+                      <div className="flex items-center space-x-3">
+                        {w.info.icon ? (
+                          <img src={w.info.icon} alt={w.info.name} className="w-9 h-9 rounded-xl" />
+                        ) : (
+                          <div className="w-9 h-9 rounded-xl bg-purple-500/10 border border-purple-500/30 flex items-center justify-center text-monad-cyan">
+                            <Wallet className="w-5 h-5" />
+                          </div>
+                        )}
+                        <div>
+                          <div className="flex items-center space-x-2">
+                            <span className="text-sm font-semibold text-white group-hover:text-monad-cyan transition">
+                              {w.info.name}
+                            </span>
+                            <span className="text-[10px] bg-cyan-950 text-monad-cyan border border-cyan-800/80 px-1.5 py-0.2 rounded font-mono font-semibold">
+                              EIP-6963
+                            </span>
+                          </div>
+                          <div className="text-[11px] text-slate-400">Detected extension</div>
+                        </div>
+                      </div>
+                      <ChevronRight className="w-4 h-4 text-slate-600 group-hover:text-white transition" />
+                    </button>
+                  ))}
+
+                {/* Option 3: Passkey */}
+                <button
+                  type="button"
+                  onClick={connectPasskey}
+                  disabled={isConnectingWallet}
+                  className="w-full p-3 sm:p-3.5 rounded-2xl bg-slate-900/90 border border-slate-800 hover:border-monad-cyan/80 hover:bg-slate-800/50 transition flex items-center justify-between text-left group cursor-pointer"
+                >
+                  <div className="flex items-center space-x-3">
+                    <div className="w-9 h-9 rounded-xl bg-cyan-500/10 border border-cyan-500/30 flex items-center justify-center text-monad-cyan group-hover:scale-105 transition">
                       <Fingerprint className="w-5 h-5" />
                     </div>
                     <div>
@@ -1358,21 +1535,22 @@ export default function Home() {
                         Passkey (WebAuthn / Touch ID / Face ID)
                       </div>
                       <div className="text-[11px] text-slate-400">
-                        Self-custodial biometrics, no seed phrase needed
+                        Self-custodial biometrics + 12-word recovery backup
                       </div>
                     </div>
                   </div>
                   <ChevronRight className="w-4 h-4 text-slate-600 group-hover:text-white transition" />
                 </button>
 
-                {/* Option 3: Demo Showcase */}
+                {/* Option 4: Demo Showcase Account */}
                 <button
+                  type="button"
                   onClick={connectDemoWallet}
                   disabled={isConnectingWallet}
-                  className="w-full p-3.5 rounded-2xl bg-purple-950/30 border border-purple-800/50 hover:border-monad-purple hover:bg-purple-950/50 transition flex items-center justify-between text-left group cursor-pointer"
+                  className="w-full p-3 sm:p-3.5 rounded-2xl bg-purple-950/30 border border-purple-800/50 hover:border-monad-purple hover:bg-purple-950/50 transition flex items-center justify-between text-left group cursor-pointer"
                 >
                   <div className="flex items-center space-x-3">
-                    <div className="w-9 h-9 rounded-xl bg-purple-500/10 border border-purple-500/30 flex items-center justify-center text-purple-300">
+                    <div className="w-9 h-9 rounded-xl bg-purple-500/10 border border-purple-500/30 flex items-center justify-center text-purple-300 group-hover:scale-105 transition">
                       <Zap className="w-5 h-5" />
                     </div>
                     <div>
@@ -1380,7 +1558,7 @@ export default function Home() {
                         Demo Showcase Account (0x6E95...d8Bf)
                       </div>
                       <div className="text-[11px] text-purple-300/70">
-                        Pre-funded with 4.93 MON on Monad Testnet for judges
+                        Pre-funded with 4.61 MON on Monad Testnet for judges
                       </div>
                     </div>
                   </div>
