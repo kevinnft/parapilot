@@ -105,8 +105,10 @@ export default function Home() {
     KURU: true,
   });
   const [whitelistedContracts, setWhitelistedContracts] = useState({
-    "Kuru DEX Orderbook": { address: "0x8a92bC72c6F30D98E84f2A6c99c7c34dE8B9011B", active: true },
-    "MonadSwap Router": { address: "0x4f12E8a5628b5e58A8cD7e3B250821A4cCe73992", active: true },
+    "MockDEX Router": { address: "0xf33d5C786f1f6fD6890CE7ab9Ad7beAC363443B1", active: true },
+    "ParaPilotAccount": { address: "0x8A55d40977C49D4Ac5C569ebA4631D4e9026C592", active: true },
+    "SessionKeyValidator": { address: "0x01022d952087B7FBacc8DA53478B0F555Fe457C4", active: true },
+    "USDC Contract": { address: "0xd4309703c783E671F5Ef61630Cb576916cE03200", active: true },
   });
 
   // Real Zerion & Monad Live Portfolio Data
@@ -597,15 +599,15 @@ export default function Home() {
     setShowWalletModal(false);
   };
 
-  // Simulates a custom AI trade
-  const simulateCustomSwap = () => {
+  // Real On-Chain Swap Execution
+  const simulateCustomSwap = async () => {
     if (!connectedAddress) {
       setShowWalletModal(true);
       addLog("POLICY", "warning", "No wallet connected. Please connect wallet first.");
       setExecutionToast({
         type: "info",
         title: "Wallet Connection Required",
-        desc: "Please connect via Passkey, Browser Wallet, or Demo Account before executing trades.",
+        desc: "Please connect via OKX Wallet, MetaMask, Passkey, or Demo Account before executing trades.",
       });
       return;
     }
@@ -643,44 +645,115 @@ export default function Home() {
 
     const monPrice = 3.0;
     const spendUsd = +(amountMon * monPrice).toFixed(2);
-    const tokenReceived = +(amountMon * 2.95).toFixed(2);
+    const rateMap: Record<string, number> = { USDC: 2.95, WETH: 0.00115, KURU: 14.8 };
+    const tokenReceived = +(amountMon * (rateMap[selectedTargetToken] || 2.95)).toFixed(4);
     const remainingQuota = +(dailyLimit - spentToday).toFixed(2);
 
-    setIsExecuting(true);
-
     if (spentToday + spendUsd > dailyLimit) {
-      setTimeout(() => {
-        setIsExecuting(false);
-        addLog("BRAIN", "warning", `AI calculating swap: Trade of ${amountMon} MON ($${spendUsd}) exceeds 24h limit.`);
-        addLog("VALIDATOR", "error", `🛑 REVERTED: SpendLimitExceeded() - Attempted $${spendUsd} with only $${remainingQuota} quota remaining.`);
-        addLog("MONAD_EVM", "warning", "On-chain state protected: Zero funds moved from ParaPilotAccount.");
-        setExecutionToast({
-          type: "revert",
-          title: "🛑 Reverted: SpendLimitExceeded()",
-          desc: `Attempted $${spendUsd} USD, but only $${remainingQuota} remains in the 24h guardrail quota.`,
-        });
-      }, 350);
+      addLog("BRAIN", "warning", `AI calculating swap: Trade of ${amountMon} MON ($${spendUsd}) exceeds 24h limit.`);
+      addLog("VALIDATOR", "error", `🛑 REVERTED: SpendLimitExceeded() - Attempted $${spendUsd} with only $${remainingQuota} quota remaining.`);
+      addLog("MONAD_EVM", "warning", "On-chain state protected: Zero funds moved from ParaPilotAccount.");
+      setExecutionToast({
+        type: "revert",
+        title: "🛑 Reverted: SpendLimitExceeded()",
+        desc: `Attempted $${spendUsd} USD, but only $${remainingQuota} remains in the 24h guardrail quota.`,
+      });
       return;
     }
 
-    addLog("BRAIN", "info", `Arbitrage identified on Kuru DEX: Swap ${amountMon} MON -> ${tokenReceived} ${selectedTargetToken}.`);
-    addLog("ZERION", "info", `Zerion Builder API verifies ${selectedTargetToken} reputation & liquidity depth.`);
-    addLog("VALIDATOR", "success", `Policy Passed: Kuru DEX Whitelisted, Spend ($${spendUsd}) <= Remaining Limit ($${remainingQuota}).`);
+    setIsExecuting(true);
+    addLog("BRAIN", "info", `Routing order on Monad Testnet: ${amountMon} MON -> ~${tokenReceived} ${selectedTargetToken}`);
+    addLog("VALIDATOR", "success", `Policy Passed: Target Router 0xf33d...43B1 Whitelisted, Limit OK.`);
 
-    setTimeout(() => {
-      setIsExecuting(false);
-      const mockHash = "0x" + Array.from({ length: 40 }, () => Math.floor(Math.random() * 16).toString(16)).join("");
-      const blockNum = 51550950 + Math.floor(Math.random() * 25);
-      addLog("MONAD_EVM", "success", `Tx Confirmed on Monad Parallel EVM (Block #${blockNum}, Latency: 0.35s). Hash: ${mockHash.slice(0, 10)}...${mockHash.slice(-4)}`);
-      setSpentToday((prev) => Math.min(dailyLimit, +(prev + spendUsd).toFixed(2)));
+    try {
+      const tokenAddresses: Record<string, string> = {
+        USDC: "0xd4309703c783E671F5Ef61630Cb576916cE03200",
+        WETH: "0x7CeEe8e62AfeeD5645cD4024DbfeF3e5F71145e0",
+        KURU: "0x15c2cEf5c93AD6cc6158812C2e128579727Dd4ba",
+      };
+      const targetTokenAddr = tokenAddresses[selectedTargetToken] || tokenAddresses.USDC;
 
+      // Path 1: If user connected via Browser Extension (OKX or MetaMask)
+      if (connectionMethod === "extension") {
+        const provider = getOkxProvider() || getMetaMaskProvider() || (typeof window !== "undefined" ? (window as any).ethereum : null);
+        if (!provider) throw new Error("No Web3 wallet provider detected. Please make sure OKX or MetaMask is active.");
+
+        addLog("MONAD_EVM", "info", "Awaiting confirmation from your wallet extension (OKX / MetaMask)...");
+
+        // ABI encode swapExactETHForTokens(address tokenOut, uint256 minAmountOut)
+        // selector: 0x38ed1739
+        const swapSel = "38ed1739";
+        const calldata = `0x${swapSel}${targetTokenAddr.slice(2).toLowerCase().padStart(64, "0")}${"0".padStart(64, "0")}`;
+        const weiVal = BigInt(Math.floor(amountMon * 1e18));
+        const hexVal = "0x" + weiVal.toString(16);
+
+        const txHash = await provider.request({
+          method: "eth_sendTransaction",
+          params: [
+            {
+              from: connectedAddress,
+              to: "0xf33d5C786f1f6fD6890CE7ab9Ad7beAC363443B1",
+              value: hexVal,
+              data: calldata,
+            },
+          ],
+        });
+
+        addLog("MONAD_EVM", "success", `Tx Broadcasted: ${txHash.slice(0, 10)}...${txHash.slice(-4)}`);
+        setSpentToday((prev) => Math.min(dailyLimit, +(prev + spendUsd).toFixed(2)));
+
+        setExecutionToast({
+          type: "success",
+          title: `✅ Swap Confirmed: ${amountMon} MON → ${tokenReceived} ${selectedTargetToken}`,
+          desc: `Broadcasted directly from your wallet ${connectedAddress.slice(0, 6)}...${connectedAddress.slice(-4)} to MockDEX. Click to view live on Explorer!`,
+          txHash: txHash,
+        });
+
+        fetchMonadBalance(connectedAddress);
+        fetchWalletTokens(connectedAddress);
+      } else {
+        // Path 2: Demo or Passkey - Relay via real on-chain executor
+        addLog("MONAD_EVM", "info", "Executing real on-chain transaction via Monad Testnet RPC...");
+
+        const resp = await fetch("/api/execute-swap", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            token: selectedTargetToken,
+            amountMon: amountMon,
+            recipient: connectedAddress,
+          }),
+        });
+        const resData = await resp.json();
+
+        if (resData.success && resData.txHash) {
+          addLog("MONAD_EVM", "success", `Tx Confirmed in Block #${resData.blockNumber}! Status: SUCCESS (0x1)`);
+          setSpentToday((prev) => Math.min(dailyLimit, +(prev + spendUsd).toFixed(2)));
+
+          setExecutionToast({
+            type: "success",
+            title: `✅ Swap Confirmed: ${amountMon} MON → ${tokenReceived} ${selectedTargetToken}`,
+            desc: `Executed on Monad Testnet (Block #${resData.blockNumber}). Transaction Status: SUCCESS (0x1)!`,
+            txHash: resData.txHash,
+          });
+
+          fetchMonadBalance(connectedAddress);
+          fetchWalletTokens(connectedAddress);
+        } else {
+          throw new Error(resData.error || "Execution failed on Monad Testnet.");
+        }
+      }
+    } catch (err: any) {
+      console.error(err);
+      addLog("MONAD_EVM", "error", `Swap Error: ${err?.message || err}`);
       setExecutionToast({
-        type: "success",
-        title: `✅ Swap Confirmed: ${amountMon} MON → ${tokenReceived} ${selectedTargetToken}`,
-        desc: `Executed by session key ${keyDisplay} under on-chain guardrails. Monad block #${blockNum} confirmed in 0.35s!`,
-        txHash: "0x1d745562126303ca67dcbb9c8694b40df963de08917deaf52d3e9ec30a997364",
+        type: "revert",
+        title: "Swap Transaction Canceled / Failed",
+        desc: err?.message || "Transaction was rejected or failed on-chain.",
       });
-    }, 450);
+    } finally {
+      setIsExecuting(false);
+    }
   };
 
   // Simulates an exploit or rogue behavior

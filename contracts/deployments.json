@@ -1,6 +1,8 @@
 {
   "network": "Monad Testnet",
   "chainId": 10143,
+  "rpcUrl": "https://testnet-rpc.monad.xyz",
+  "explorerUrl": "https://testnet.monadexplorer.com",
   "deployer": "0x6E95951bbAc8454950508394EC0F5fcCF6c4d8Bf",
   "contracts": {
     "SessionKeyValidator": {
@@ -9,20 +11,63 @@
     },
     "ParaPilotAccount": {
       "address": "0x8A55d40977C49D4Ac5C569ebA4631D4e9026C592",
-      "txHash": "0x29bfdbe7c7b9be78fe3ca6e6336b0bd07f8526798f1748f4f9dad3bc7f7e93ae",
       "explorer": "https://testnet.monadexplorer.com/address/0x8A55d40977C49D4Ac5C569ebA4631D4e9026C592"
-    }
-  },
-  "interactions": {
-    "accountFundingTx": {
-      "hash": "0x815117309a1d9d211ab36df66919166711cb5cf33fa676cb2baa22567b32da82",
-      "explorer": "https://testnet.monadexplorer.com/tx/0x815117309a1d9d211ab36df66919166711cb5cf33fa676cb2baa22567b32da82"
     },
-    "policyRegistrationTx": {
-      "hash": "0x04084eb7bb4b6c2e50634696e33b7c6b22f1c2b8c54ec3cb9446e07f11a61e51",
-      "agentKey": "0x7179b7746187768e7b165b5006b52dc2744888f6",
-      "explorer": "https://testnet.monadexplorer.com/tx/0x04084eb7bb4b6c2e50634696e33b7c6b22f1c2b8c54ec3cb9446e07f11a61e51"
+    "MockDEX": {
+      "address": "0xf33d5C786f1f6fD6890CE7ab9Ad7beAC363443B1",
+      "explorer": "https://testnet.monadexplorer.com/address/0xf33d5C786f1f6fD6890CE7ab9Ad7beAC363443B1"
+    },
+    "USDC": {
+      "address": "0xd4309703c783E671F5Ef61630Cb576916cE03200",
+      "decimals": 6,
+      "explorer": "https://testnet.monadexplorer.com/address/0xd4309703c783E671F5Ef61630Cb576916cE03200"
+    },
+    "WETH": {
+      "address": "0x7CeEe8e62AfeeD5645cD4024DbfeF3e5F71145e0",
+      "decimals": 18,
+      "explorer": "https://testnet.monadexplorer.com/address/0xd4309703c783E671F5Ef61630Cb576916cE03200"
+    },
+    "KURU": {
+      "address": "0x15c2cEf5c93AD6cc6158812C2e128579727Dd4ba",
+      "decimals": 18,
+      "explorer": "https://testnet.monadexplorer.com/address/0x15c2cEf5c93AD6cc6158812C2e128579727Dd4ba"
     }
   },
-  "updatedAt": "2026-09-20 09:47:57 UTC"
+  "verifiedLiveTransactions": [
+    {
+      "type": "Session Key Swap (MON -> USDC)",
+      "txHash": "0xbc8cb198433460a5542fa0a303eab62c1b8dda95cc98c4450cada84dadeae5f5",
+      "status": "SUCCESS (0x1)",
+      "blockNumber": 64166313,
+      "from": "0x4612501ad4F82475f3F94458c2cc4257267dD0cc",
+      "to": "0x8A55d40977C49D4Ac5C569ebA4631D4e9026C592",
+      "tokenOut": "USDC",
+      "explorer": "https://testnet.monadexplorer.com/tx/0xbc8cb198433460a5542fa0a303eab62c1b8dda95cc98c4450cada84dadeae5f5"
+    },
+    {
+      "type": "Session Key Swap (MON -> WETH)",
+      "txHash": "0xa5d7878d069d5b78a68b834c93873246a76541229fc166bd5ee465d2efdff486",
+      "status": "SUCCESS (0x1)",
+      "from": "0x4612501ad4F82475f3F94458c2cc4257267dD0cc",
+      "tokenOut": "WETH",
+      "explorer": "https://testnet.monadexplorer.com/tx/0xa5d7878d069d5b78a68b834c93873246a76541229fc166bd5ee465d2efdff486"
+    },
+    {
+      "type": "Session Key Swap (MON -> KURU)",
+      "txHash": "0x7785cba3f6a8495feb5f2eabcaba30f7676cba8068b388ed3048ef7ba4c23b95",
+      "status": "SUCCESS (0x1)",
+      "from": "0x4612501ad4F82475f3F94458c2cc4257267dD0cc",
+      "tokenOut": "KURU",
+      "explorer": "https://testnet.monadexplorer.com/tx/0x7785cba3f6a8495feb5f2eabcaba30f7676cba8068b388ed3048ef7ba4c23b95"
+    },
+    {
+      "type": "Direct User Swap",
+      "txHash": "0xe5345c41f51ddc62dff7947a219b76c80a435ccd00c8037966a843819af333b9",
+      "status": "SUCCESS (0x1)",
+      "from": "0x6E95951bbAc8454950508394EC0F5fcCF6c4d8Bf",
+      "to": "0xf33d5C786f1f6fD6890CE7ab9Ad7beAC363443B1",
+      "explorer": "https://testnet.monadexplorer.com/tx/0xe5345c41f51ddc62dff7947a219b76c80a435ccd00c8037966a843819af333b9"
+    }
+  ],
+  "updatedAt": "2026-09-20 12:45:00 UTC"
 }
