@@ -4,6 +4,7 @@ Enriches on-chain raw portfolio data into structured, spam-filtered market intel
 """
 
 import os
+import base64
 import requests
 from typing import Dict, Any, List, Optional
 
@@ -12,9 +13,17 @@ class ZerionClient:
 
     def __init__(self, api_key: Optional[str] = None):
         self.api_key = api_key or os.getenv("ZERION_API_KEY", "")
+        # Zerion requires HTTP Basic Auth with API key as username and empty password
+        if self.api_key:
+            auth_str = base64.b64encode(f"{self.api_key}:".encode()).decode()
+            auth_header = f"Basic {auth_str}"
+        else:
+            auth_header = ""
+
         self.headers = {
             "accept": "application/json",
-            "authorization": f"Basic {self.api_key}" if self.api_key else ""
+            "authorization": auth_header,
+            "User-Agent": "ParaPilot-Agent/1.0"
         }
 
     def get_wallet_positions(self, wallet_address: str, currency: str = "usd") -> List[Dict[str, Any]]:
