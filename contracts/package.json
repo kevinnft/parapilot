@@ -1,0 +1,25 @@
+{
+  "name": "@parapilot/contracts",
+  "version": "0.1.0",
+  "description": "On-chain policy engine and session key contracts for ParaPilot on Monad",
+  "main": "index.js",
+  "scripts": {
+    "compile": "hardhat compile",
+    "test": "hardhat test",
+    "deploy:monad-testnet": "hardhat run scripts/deploy.js --network monadTestnet"
+  },
+  "keywords": [
+    "monad",
+    "evm",
+    "ai-agents",
+    "session-keys",
+    "guardrails",
+    "hackathon"
+  ],
+  "author": "ParaPilot Team",
+  "license": "MIT",
+  "devDependencies": {
+    "@nomicfoundation/hardhat-toolbox": "^5.0.0",
+    "hardhat": "^2.22.0"
+  }
+}
