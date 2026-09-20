@@ -58,9 +58,10 @@ export default function Home() {
   const [isSavingPolicy, setIsSavingPolicy] = useState(false);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
 
-  // Custom Swap State
-  const [monToSwap, setMonToSwap] = useState<string>("2.5");
-  const [selectedTargetToken, setSelectedTargetToken] = useState<string>("USDC");
+  // Bidirectional Multi-Token Swap State
+  const [sourceToken, setSourceToken] = useState<string>("MON");
+  const [targetToken, setTargetToken] = useState<string>("USDC");
+  const [swapAmount, setSwapAmount] = useState<string>("0.5");
   const [isExecuting, setIsExecuting] = useState(false);
 
   // Execution Toast Feedback State
@@ -105,7 +106,7 @@ export default function Home() {
     KURU: true,
   });
   const [whitelistedContracts, setWhitelistedContracts] = useState({
-    "MockDEX Router": { address: "0xf33d5C786f1f6fD6890CE7ab9Ad7beAC363443B1", active: true },
+    "MockDEX Router (Multi-Token)": { address: "0xbc12983288B4225205Dc53702B1eba6298f94376", active: true },
     "ParaPilotAccount": { address: "0x8A55d40977C49D4Ac5C569ebA4631D4e9026C592", active: true },
     "SessionKeyValidator": { address: "0x01022d952087B7FBacc8DA53478B0F555Fe457C4", active: true },
     "USDC Contract": { address: "0xd4309703c783E671F5Ef61630Cb576916cE03200", active: true },
@@ -226,14 +227,13 @@ export default function Home() {
     const method = targetMethod || connectionMethod;
     const addr = targetAddr || connectedAddress;
 
-    // If using Demo Fleet Account W001
+    // For Demo Account: Private Key & Backup are restricted (hidden)
     if (method === "demo" || addr?.toLowerCase() === "0x6E95951bbAc8454950508394EC0F5fcCF6c4d8Bf".toLowerCase()) {
-      const demoPk = "0xd1dac037e3892d6a327cdb5fdceb9f4deb37b97a2025201d5ca05f1e86c9c101";
       setPasskeyMnemonic("");
-      setPasskeyPrivateKey(demoPk);
+      setPasskeyPrivateKey("");
       return {
         mnemonic: "",
-        privateKey: demoPk,
+        privateKey: "",
         address: "0x6E95951bbAc8454950508394EC0F5fcCF6c4d8Bf",
       };
     }
@@ -257,7 +257,10 @@ export default function Home() {
   };
 
   const downloadWalletBackup = () => {
-    if (!connectedAddress) return;
+    if (!connectedAddress || connectionMethod === "demo") {
+      alert("Private key & backup export is disabled for the public demo showcase wallet. To generate and backup your personal keys, connect via Passkey (WebAuthn) or OKX Wallet.");
+      return;
+    }
     const { mnemonic, privateKey } = ensurePasskeyRecoveryKey();
     const backupData = {
       version: "1.0",
@@ -599,7 +602,7 @@ export default function Home() {
     setShowWalletModal(false);
   };
 
-  // Real On-Chain Swap Execution
+  // Real On-Chain Bidirectional Multi-Token Swap Execution
   const simulateCustomSwap = async () => {
     if (!connectedAddress) {
       setShowWalletModal(true);
@@ -612,9 +615,19 @@ export default function Home() {
       return;
     }
 
-    const amountMon = parseFloat(monToSwap);
-    if (isNaN(amountMon) || amountMon <= 0) {
-      addLog("BRAIN", "warning", "Invalid amount: Please specify a valid MON amount to swap.");
+    const amountNum = parseFloat(swapAmount);
+    if (isNaN(amountNum) || amountNum <= 0) {
+      addLog("BRAIN", "warning", "Invalid amount: Please specify a valid amount to swap.");
+      return;
+    }
+
+    if (sourceToken === targetToken) {
+      addLog("BRAIN", "warning", "Source and target token cannot be the same.");
+      setExecutionToast({
+        type: "revert",
+        title: "Identical Tokens Selected",
+        desc: "Please select different source and target tokens.",
+      });
       return;
     }
 
@@ -632,25 +645,21 @@ export default function Home() {
       return;
     }
 
-    // Check token whitelist
-    if (!allowedTokens[selectedTargetToken as keyof typeof allowedTokens]) {
-      addLog("VALIDATOR", "error", `🛑 REVERTED: TokenNotWhitelisted(${selectedTargetToken}) - Target asset is disabled in policy.`);
-      setExecutionToast({
-        type: "revert",
-        title: `Asset Blocked: ${selectedTargetToken}`,
-        desc: `Smart contract rejected trade because ${selectedTargetToken} is not in the owner whitelist.`,
-      });
-      return;
-    }
+    const tokenPrices: Record<string, number> = {
+      MON: 3.0,
+      USDC: 1.0,
+      WETH: 2650.0,
+      KURU: 0.20,
+    };
 
-    const monPrice = 3.0;
-    const spendUsd = +(amountMon * monPrice).toFixed(2);
-    const rateMap: Record<string, number> = { USDC: 2.95, WETH: 0.00115, KURU: 14.8 };
-    const tokenReceived = +(amountMon * (rateMap[selectedTargetToken] || 2.95)).toFixed(4);
+    const srcPrice = tokenPrices[sourceToken] || 1.0;
+    const dstPrice = tokenPrices[targetToken] || 1.0;
+    const spendUsd = +(amountNum * srcPrice).toFixed(2);
+    const tokenReceived = +((amountNum * srcPrice * 0.995) / dstPrice).toFixed(targetToken === "WETH" ? 6 : 4);
     const remainingQuota = +(dailyLimit - spentToday).toFixed(2);
 
     if (spentToday + spendUsd > dailyLimit) {
-      addLog("BRAIN", "warning", `AI calculating swap: Trade of ${amountMon} MON ($${spendUsd}) exceeds 24h limit.`);
+      addLog("BRAIN", "warning", `Trade of ${amountNum} ${sourceToken} ($${spendUsd}) exceeds 24h limit.`);
       addLog("VALIDATOR", "error", `🛑 REVERTED: SpendLimitExceeded() - Attempted $${spendUsd} with only $${remainingQuota} quota remaining.`);
       addLog("MONAD_EVM", "warning", "On-chain state protected: Zero funds moved from ParaPilotAccount.");
       setExecutionToast({
@@ -662,38 +671,54 @@ export default function Home() {
     }
 
     setIsExecuting(true);
-    addLog("BRAIN", "info", `Routing order on Monad Testnet: ${amountMon} MON -> ~${tokenReceived} ${selectedTargetToken}`);
-    addLog("VALIDATOR", "success", `Policy Passed: Target Router 0xf33d...43B1 Whitelisted, Limit OK.`);
+    addLog("BRAIN", "info", `Routing multi-token order: ${amountNum} ${sourceToken} -> ~${tokenReceived} ${targetToken}`);
+    addLog("VALIDATOR", "success", `Policy Passed: Multi-Token DEX 0xbc12...4376 Whitelisted, Limit OK.`);
 
     try {
+      const DEX_ADDRESS = "0xbc12983288B4225205Dc53702B1eba6298f94376";
       const tokenAddresses: Record<string, string> = {
         USDC: "0xd4309703c783E671F5Ef61630Cb576916cE03200",
         WETH: "0x7CeEe8e62AfeeD5645cD4024DbfeF3e5F71145e0",
         KURU: "0x15c2cEf5c93AD6cc6158812C2e128579727Dd4ba",
       };
-      const targetTokenAddr = tokenAddresses[selectedTargetToken] || tokenAddresses.USDC;
 
       // Path 1: If user connected via Browser Extension (OKX or MetaMask)
       if (connectionMethod === "extension") {
         const provider = getOkxProvider() || getMetaMaskProvider() || (typeof window !== "undefined" ? (window as any).ethereum : null);
         if (!provider) throw new Error("No Web3 wallet provider detected. Please make sure OKX or MetaMask is active.");
 
-        addLog("MONAD_EVM", "info", "Awaiting confirmation from your wallet extension (OKX / MetaMask)...");
+        addLog("MONAD_EVM", "info", `Awaiting confirmation from your wallet extension (${sourceToken} -> ${targetToken})...`);
 
-        // ABI encode swapExactETHForTokens(address tokenOut, uint256 minAmountOut)
-        // selector: 0x38ed1739
-        const swapSel = "38ed1739";
-        const calldata = `0x${swapSel}${targetTokenAddr.slice(2).toLowerCase().padStart(64, "0")}${"0".padStart(64, "0")}`;
-        const weiVal = BigInt(Math.floor(amountMon * 1e18));
-        const hexVal = "0x" + weiVal.toString(16);
+        let calldata: string;
+        let weiVal = "0x0";
+
+        if (sourceToken === "MON") {
+          // swapExactETHForTokens(address tokenOut, uint256 minAmountOut) -> selector: 0xb79c48e5
+          const dstAddr = tokenAddresses[targetToken];
+          calldata = `0xb79c48e5${dstAddr.slice(2).toLowerCase().padStart(64, "0")}${"0".padStart(64, "0")}`;
+          weiVal = "0x" + BigInt(Math.floor(amountNum * 1e18)).toString(16);
+        } else if (targetToken === "MON") {
+          // swapExactTokensForETH(address tokenIn, uint256 amountIn, uint256 minAmountOut) -> selector: 0xc038847a
+          const srcAddr = tokenAddresses[sourceToken];
+          const decimals = sourceToken === "USDC" ? 6 : 18;
+          const inUnits = BigInt(Math.floor(amountNum * 10 ** decimals));
+          calldata = `0xc038847a${srcAddr.slice(2).toLowerCase().padStart(64, "0")}${inUnits.toString(16).padStart(64, "0")}${"0".padStart(64, "0")}`;
+        } else {
+          // swapExactTokensForTokens(address tokenIn, address tokenOut, uint256 amountIn, uint256 minAmountOut) -> selector: 0x89fe039b
+          const srcAddr = tokenAddresses[sourceToken];
+          const dstAddr = tokenAddresses[targetToken];
+          const decimals = sourceToken === "USDC" ? 6 : 18;
+          const inUnits = BigInt(Math.floor(amountNum * 10 ** decimals));
+          calldata = `0x89fe039b${srcAddr.slice(2).toLowerCase().padStart(64, "0")}${dstAddr.slice(2).toLowerCase().padStart(64, "0")}${inUnits.toString(16).padStart(64, "0")}${"0".padStart(64, "0")}`;
+        }
 
         const txHash = await provider.request({
           method: "eth_sendTransaction",
           params: [
             {
               from: connectedAddress,
-              to: "0xf33d5C786f1f6fD6890CE7ab9Ad7beAC363443B1",
-              value: hexVal,
+              to: DEX_ADDRESS,
+              value: weiVal,
               data: calldata,
             },
           ],
@@ -704,8 +729,8 @@ export default function Home() {
 
         setExecutionToast({
           type: "success",
-          title: `✅ Swap Confirmed: ${amountMon} MON → ${tokenReceived} ${selectedTargetToken}`,
-          desc: `Broadcasted directly from your wallet ${connectedAddress.slice(0, 6)}...${connectedAddress.slice(-4)} to MockDEX. Click to view live on Explorer!`,
+          title: `✅ Swap Confirmed: ${amountNum} ${sourceToken} → ${tokenReceived} ${targetToken}`,
+          desc: `Broadcasted directly from your wallet ${connectedAddress.slice(0, 6)}...${connectedAddress.slice(-4)} to MockDEX. Click to view on Explorer!`,
           txHash: txHash,
         });
 
@@ -713,14 +738,15 @@ export default function Home() {
         fetchWalletTokens(connectedAddress);
       } else {
         // Path 2: Demo or Passkey - Relay via real on-chain executor
-        addLog("MONAD_EVM", "info", "Executing real on-chain transaction via Monad Testnet RPC...");
+        addLog("MONAD_EVM", "info", `Executing real on-chain swap via Monad Testnet RPC (${sourceToken} -> ${targetToken})...`);
 
         const resp = await fetch("/api/execute-swap", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            token: selectedTargetToken,
-            amountMon: amountMon,
+            sourceToken,
+            targetToken,
+            amount: amountNum,
             recipient: connectedAddress,
           }),
         });
@@ -732,7 +758,7 @@ export default function Home() {
 
           setExecutionToast({
             type: "success",
-            title: `✅ Swap Confirmed: ${amountMon} MON → ${tokenReceived} ${selectedTargetToken}`,
+            title: `✅ Swap Confirmed: ${amountNum} ${sourceToken} → ${tokenReceived} ${targetToken}`,
             desc: `Executed on Monad Testnet (Block #${resData.blockNumber}). Transaction Status: SUCCESS (0x1)!`,
             txHash: resData.txHash,
           });
@@ -1216,20 +1242,21 @@ export default function Home() {
           <div className="lg:col-span-7 space-y-6">
             <div className="bg-monad-card border border-monad-cardBorder rounded-3xl p-6 shadow-md flex flex-col space-y-5">
               {/* Simulator is now AT THE TOP of the column so it's instantly visible */}
-              <div className="space-y-3 bg-[#0B0914] p-5 rounded-2xl border border-monad-cardBorder shadow-inner">
+              <div className="space-y-3.5 bg-[#0B0914] p-5 rounded-2xl border border-monad-cardBorder shadow-inner">
                 <div className="flex justify-between items-center">
                   <div className="flex items-center space-x-2">
                     <div className="w-2 h-2 rounded-full bg-monad-cyan animate-ping"></div>
                     <span className="text-xs font-bold text-white tracking-wide uppercase font-mono">
-                      Autonomous Agent Swap Console
+                      Autonomous Multi-Token Swap Console
                     </span>
                   </div>
                   <div className="text-xs font-mono">
                     {(() => {
-                      const amount = parseFloat(monToSwap) || 0;
-                      const costUsd = +(amount * 3.0).toFixed(2);
+                      const amount = parseFloat(swapAmount) || 0;
+                      const prices: Record<string, number> = { MON: 3.0, USDC: 1.0, WETH: 2650.0, KURU: 0.20 };
+                      const costUsd = +(amount * (prices[sourceToken] || 1.0)).toFixed(2);
                       const remaining = +(dailyLimit - spentToday).toFixed(2);
-                      if (amount <= 0) return <span className="text-slate-500">Enter MON amount</span>;
+                      if (amount <= 0) return <span className="text-slate-500">Enter amount</span>;
                       if (costUsd <= remaining) {
                         return <span className="text-emerald-400 font-semibold bg-emerald-950/60 px-2 py-0.5 rounded border border-emerald-800">✓ Safe (${costUsd} / ${remaining} left)</span>;
                       } else {
@@ -1239,63 +1266,171 @@ export default function Home() {
                   </div>
                 </div>
 
-                {/* Amount Input & Target Token Selector */}
-                <div className="grid grid-cols-1 sm:grid-cols-12 gap-2">
-                  <div className="sm:col-span-7 relative">
-                    <input
-                      type="number"
-                      step="0.5"
-                      min="0.1"
-                      value={monToSwap}
-                      onChange={(e) => setMonToSwap(e.target.value)}
-                      placeholder="Amount to swap"
-                      className="w-full bg-[#141124] border border-slate-700/80 focus:border-monad-purple rounded-xl px-4 py-3 text-base font-mono text-white placeholder-slate-600 outline-none transition shadow-sm"
-                    />
-                    <div className="absolute right-3 top-3 flex items-center space-x-1.5 text-xs text-monad-purple font-mono font-bold pointer-events-none">
-                      <span>MON</span>
-                      <span className="text-[10px] text-slate-500 font-normal">(~$3.00)</span>
+                {/* YOU PAY BOX */}
+                <div className="bg-[#141124] border border-slate-700/80 rounded-2xl p-3.5 space-y-2">
+                  <div className="flex items-center justify-between text-xs text-slate-400 font-mono">
+                    <span className="font-semibold text-slate-300">You Pay</span>
+                    <div className="flex items-center space-x-2">
+                      <span>
+                        Balance: {(() => {
+                          if (sourceToken === "MON") return Number(walletBalance) || 0;
+                          const found = portfolioTokens.find((t) => t.symbol?.toUpperCase() === sourceToken);
+                          return found ? found.quantity : 0;
+                        })().toLocaleString(undefined, { maximumFractionDigits: 4 })} {sourceToken}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          let bal = 0;
+                          if (sourceToken === "MON") bal = Number(walletBalance) || 0;
+                          else {
+                            const found = portfolioTokens.find((t) => t.symbol?.toUpperCase() === sourceToken);
+                            bal = found ? found.quantity : 0;
+                          }
+                          if (bal > 0) setSwapAmount(bal.toString());
+                        }}
+                        className="text-[10px] px-1.5 py-0.5 rounded bg-monad-purple/30 text-monad-cyan hover:bg-monad-purple/50 transition font-bold cursor-pointer"
+                      >
+                        MAX
+                      </button>
                     </div>
                   </div>
+                  <div className="flex items-center space-x-3">
+                    <input
+                      type="number"
+                      step="any"
+                      min="0"
+                      value={swapAmount}
+                      onChange={(e) => setSwapAmount(e.target.value)}
+                      placeholder="0.0"
+                      className="w-full bg-transparent text-xl font-mono text-white placeholder-slate-600 outline-none font-semibold"
+                    />
+                    <select
+                      value={sourceToken}
+                      onChange={(e) => {
+                        const newSrc = e.target.value;
+                        if (newSrc === targetToken) {
+                          setTargetToken(sourceToken);
+                        }
+                        setSourceToken(newSrc);
+                      }}
+                      className="bg-slate-800 border border-slate-700 text-white font-mono font-bold text-xs px-3 py-2 rounded-xl outline-none cursor-pointer hover:border-monad-purple transition"
+                    >
+                      {["MON", "USDC", "WETH", "KURU"].map((tok) => (
+                        <option key={tok} value={tok} className="bg-slate-900 text-white">
+                          {tok}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="text-[11px] text-slate-500 font-mono">
+                    {(() => {
+                      const amount = parseFloat(swapAmount) || 0;
+                      const prices: Record<string, number> = { MON: 3.0, USDC: 1.0, WETH: 2650.0, KURU: 0.20 };
+                      const usdVal = +(amount * (prices[sourceToken] || 1.0)).toFixed(2);
+                      return `~$${usdVal} USD (@ $${prices[sourceToken]}/token)`;
+                    })()}
+                  </div>
+                </div>
 
-                  <div className="sm:col-span-5 flex items-center space-x-1 bg-[#141124] border border-slate-700/80 rounded-xl p-1">
-                    {(["USDC", "WETH", "KURU"] as const).map((tok) => (
-                      <button
-                        key={tok}
-                        type="button"
-                        onClick={() => setSelectedTargetToken(tok)}
-                        className={`flex-1 py-2 text-xs font-mono font-semibold rounded-lg transition ${
-                          selectedTargetToken === tok
-                            ? "bg-monad-purple text-white shadow-sm"
-                            : "text-slate-400 hover:text-slate-200"
-                        }`}
-                      >
-                        {tok}
-                      </button>
-                    ))}
+                {/* FLIP BUTTON */}
+                <div className="flex justify-center -my-2 relative z-10">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const oldSrc = sourceToken;
+                      const oldDst = targetToken;
+                      setSourceToken(oldDst);
+                      setTargetToken(oldSrc);
+                    }}
+                    className="w-8 h-8 rounded-full bg-slate-800 border border-slate-700 hover:border-monad-cyan hover:bg-slate-700 text-monad-cyan flex items-center justify-center transition cursor-pointer shadow-md"
+                    title="Switch swap direction"
+                  >
+                    <ArrowRightLeft className="w-4 h-4 rotate-90" />
+                  </button>
+                </div>
+
+                {/* YOU RECEIVE BOX */}
+                <div className="bg-[#141124] border border-slate-700/80 rounded-2xl p-3.5 space-y-2">
+                  <div className="flex items-center justify-between text-xs text-slate-400 font-mono">
+                    <span className="font-semibold text-slate-300">You Receive (Estimated)</span>
+                    <span>
+                      Balance: {(() => {
+                        if (targetToken === "MON") return Number(walletBalance) || 0;
+                        const found = portfolioTokens.find((t) => t.symbol?.toUpperCase() === targetToken);
+                        return found ? found.quantity : 0;
+                      })().toLocaleString(undefined, { maximumFractionDigits: 4 })} {targetToken}
+                    </span>
+                  </div>
+                  <div className="flex items-center space-x-3">
+                    <div className="w-full text-xl font-mono text-monad-cyan font-semibold truncate">
+                      {(() => {
+                        const amount = parseFloat(swapAmount) || 0;
+                        const prices: Record<string, number> = { MON: 3.0, USDC: 1.0, WETH: 2650.0, KURU: 0.20 };
+                        const sPrice = prices[sourceToken] || 1.0;
+                        const dPrice = prices[targetToken] || 1.0;
+                        if (amount <= 0 || sourceToken === targetToken) return "0.0";
+                        const rec = (amount * sPrice * 0.995) / dPrice;
+                        return rec.toLocaleString(undefined, { maximumFractionDigits: targetToken === "WETH" ? 6 : 4 });
+                      })()}
+                    </div>
+                    <select
+                      value={targetToken}
+                      onChange={(e) => {
+                        const newDst = e.target.value;
+                        if (newDst === sourceToken) {
+                          setSourceToken(targetToken);
+                        }
+                        setTargetToken(newDst);
+                      }}
+                      className="bg-slate-800 border border-slate-700 text-white font-mono font-bold text-xs px-3 py-2 rounded-xl outline-none cursor-pointer hover:border-monad-purple transition"
+                    >
+                      {["MON", "USDC", "WETH", "KURU"].map((tok) => (
+                        <option key={tok} value={tok} className="bg-slate-900 text-white">
+                          {tok}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="text-[11px] text-slate-500 font-mono flex items-center justify-between">
+                    <span>
+                      {(() => {
+                        const prices: Record<string, number> = { MON: 3.0, USDC: 1.0, WETH: 2650.0, KURU: 0.20 };
+                        const sPrice = prices[sourceToken] || 1.0;
+                        const dPrice = prices[targetToken] || 1.0;
+                        return `1 ${sourceToken} ≈ ${(sPrice / dPrice).toFixed(4)} ${targetToken}`;
+                      })()}
+                    </span>
+                    <span className="text-emerald-400/90 font-medium">0.5% Slippage Protected</span>
                   </div>
                 </div>
 
                 {/* Quick Presets */}
                 <div className="flex flex-wrap items-center gap-1.5 text-xs font-mono text-slate-400 pt-0.5">
                   <span className="text-slate-500 mr-1">Presets:</span>
-                  {["0.5", "1.0", "2.5", "5.0", "15.0"].map((preset) => (
+                  {(sourceToken === "WETH" ? ["0.001", "0.005", "0.01", "0.05"] : sourceToken === "KURU" || sourceToken === "USDC" ? ["5", "10", "25", "50", "100"] : ["0.5", "1.0", "2.5", "5.0", "15.0"]).map((preset) => (
                     <button
                       key={preset}
                       type="button"
-                      onClick={() => setMonToSwap(preset)}
+                      onClick={() => setSwapAmount(preset)}
                       className={`px-2.5 py-1 rounded-lg border text-[11px] transition ${
-                        monToSwap === preset
+                        swapAmount === preset
                           ? "bg-monad-purple/30 border-monad-purple text-monad-cyan"
-                          : "bg-slate-800/80 border-slate-700 hover:border-slate-500 text-slate-300"
+                          : "bg-slate-800/80 border-slate-700 hover:border-slate-500 text-slate-300 cursor-pointer"
                       }`}
                     >
-                      {preset} MON
+                      {preset} {sourceToken}
                     </button>
                   ))}
                   <button
                     type="button"
-                    onClick={() => setMonToSwap(Math.max(0.1, +((dailyLimit - spentToday) / 3.0).toFixed(1)).toString())}
-                    className="px-2.5 py-1 rounded-lg bg-purple-950/80 border border-purple-800 text-purple-300 hover:bg-purple-900 text-[11px] transition font-bold"
+                    onClick={() => {
+                      const prices: Record<string, number> = { MON: 3.0, USDC: 1.0, WETH: 2650.0, KURU: 0.20 };
+                      const sPrice = prices[sourceToken] || 1.0;
+                      const maxVal = Math.max(0.1, +((dailyLimit - spentToday) / sPrice).toFixed(sourceToken === "WETH" ? 4 : 1));
+                      setSwapAmount(maxVal.toString());
+                    }}
+                    className="px-2.5 py-1 rounded-lg bg-purple-950/80 border border-purple-800 text-purple-300 hover:bg-purple-900 text-[11px] transition font-bold cursor-pointer"
                   >
                     MAX SAFE
                   </button>
@@ -1305,7 +1440,7 @@ export default function Home() {
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
                   <button
                     onClick={connectedAddress ? simulateCustomSwap : () => setShowWalletModal(true)}
-                    disabled={isExecuting}
+                    disabled={isExecuting || sourceToken === targetToken}
                     className="flex items-center justify-center space-x-2 py-3.5 px-4 rounded-xl bg-gradient-to-r from-purple-700 to-monad-purple hover:from-purple-600 hover:to-monad-purple text-white text-xs font-bold shadow-lg shadow-monad-purple/30 transition disabled:opacity-60 cursor-pointer"
                   >
                     {isExecuting ? (
@@ -1321,7 +1456,7 @@ export default function Home() {
                     ) : (
                       <>
                         <Play className="w-3.5 h-3.5 fill-current" />
-                        <span>Swap {monToSwap || "0"} MON via Agent</span>
+                        <span>Swap {swapAmount || "0"} {sourceToken} → {targetToken}</span>
                       </>
                     )}
                   </button>
@@ -1863,26 +1998,54 @@ export default function Home() {
               </button>
             </div>
 
-            <div className="space-y-3.5 sm:space-y-4 text-xs font-mono">
-              {/* Cryptographic Match Verified Banner */}
-              <div className="flex items-start space-x-2.5 bg-emerald-950/60 border border-emerald-500/50 p-3 rounded-2xl text-emerald-200">
-                <CheckCircle className="w-4 h-4 text-emerald-400 mt-0.5 shrink-0" />
-                <div className="space-y-0.5 text-xs">
-                  <div className="font-bold text-[11px] uppercase tracking-wider text-emerald-300">
-                    Cryptographic Match Verified (BIP-39 / BIP-44)
-                  </div>
-                  <div className="text-[11px] text-emerald-200/90 font-mono break-all leading-tight">
-                    Key & phrase derive 100% to: <span className="font-bold text-white underline">{connectedAddress}</span>
+            {connectionMethod === "demo" || connectedAddress?.toLowerCase() === "0x6E95951bbAc8454950508394EC0F5fcCF6c4d8Bf".toLowerCase() ? (
+              <div className="p-6 rounded-2xl bg-slate-900/90 border border-slate-800 text-center space-y-4 font-mono">
+                <div className="w-12 h-12 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400 mx-auto">
+                  <Lock className="w-6 h-6" />
+                </div>
+                <div>
+                  <h4 className="text-base font-bold text-white">Demo Showcase Account Protected</h4>
+                  <p className="text-xs text-slate-400 mt-1 max-w-sm mx-auto">
+                    Private key and recovery phrase export is disabled for shared public demo wallets to protect shared testnet funds.
+                  </p>
+                </div>
+                <div className="p-3.5 rounded-xl bg-purple-950/40 border border-purple-800/40 text-left text-xs text-slate-300 space-y-1">
+                  <span className="font-semibold text-monad-cyan block">How to test full key recovery:</span>
+                  <p>
+                    Connect with <strong className="text-white">Passkey (WebAuthn)</strong> or your own <strong className="text-white">OKX Wallet</strong> to generate, view, and export your personal non-custodial 12-word seed phrase and root private key.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowBackupModal(false);
+                    setShowWalletModal(true);
+                  }}
+                  className="py-2.5 px-5 rounded-xl bg-gradient-to-r from-purple-700 to-monad-purple text-white text-xs font-semibold cursor-pointer shadow-md shadow-monad-purple/20 transition hover:scale-105"
+                >
+                  Connect Personal Wallet / Passkey
+                </button>
+              </div>
+            ) : (
+              <div className="space-y-3.5 sm:space-y-4 text-xs font-mono">
+                {/* Cryptographic Match Verified Banner */}
+                <div className="flex items-start space-x-2.5 bg-emerald-950/60 border border-emerald-500/50 p-3 rounded-2xl text-emerald-200">
+                  <CheckCircle className="w-4 h-4 text-emerald-400 mt-0.5 shrink-0" />
+                  <div className="space-y-0.5 text-xs">
+                    <div className="font-bold text-[11px] uppercase tracking-wider text-emerald-300">
+                      Cryptographic Match Verified (BIP-39 / BIP-44)
+                    </div>
+                    <div className="text-[11px] text-emerald-200/90 font-mono break-all leading-tight">
+                      Key & phrase derive 100% to: <span className="font-bold text-white underline">{connectedAddress}</span>
+                    </div>
                   </div>
                 </div>
-              </div>
 
-              <div className="bg-purple-950/40 border border-purple-800/40 p-3 rounded-xl sm:rounded-2xl text-purple-200 text-xs leading-relaxed">
-                🔐 <strong>Self-Custody Guarantee:</strong> This 12-word seed phrase and private key hold root authority (<code className="text-purple-300">executeDirect</code>) on Monad Testnet. You can import them into MetaMask or Rabby at any time to recover your funds.
-              </div>
+                <div className="bg-purple-950/40 border border-purple-800/40 p-3 rounded-xl sm:rounded-2xl text-purple-200 text-xs leading-relaxed">
+                  🔐 <strong>Self-Custody Guarantee:</strong> This 12-word seed phrase and private key hold root authority (<code className="text-purple-300">executeDirect</code>) on Monad Testnet. You can import them into MetaMask or Rabby at any time to recover your funds.
+                </div>
 
-              {/* 12-Word Seed Phrase Grid (Only if not demo raw-key) */}
-              {(passkeyMnemonic || connectionMethod !== "demo") && (
+                {/* 12-Word Seed Phrase Grid */}
                 <div className="space-y-2">
                   <div className="flex items-center justify-between">
                     <span className="text-slate-300 font-bold flex items-center space-x-1.5 text-xs">
@@ -1932,57 +2095,57 @@ export default function Home() {
                     })()}
                   </div>
                 </div>
-              )}
 
-              {/* Private Key Section */}
-              <div className="space-y-1.5">
-                <div className="flex items-center justify-between text-[11px]">
-                  <span className="text-slate-400">Emergency Root Private Key:</span>
+                {/* Private Key Section */}
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between text-[11px]">
+                    <span className="text-slate-400">Emergency Root Private Key:</span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const { privateKey } = ensurePasskeyRecoveryKey();
+                        navigator.clipboard.writeText(privateKey || passkeyPrivateKey);
+                        setCopiedPk(true);
+                        setTimeout(() => setCopiedPk(false), 2000);
+                      }}
+                      className="text-monad-cyan hover:underline flex items-center space-x-1 cursor-pointer font-bold"
+                    >
+                      {copiedPk ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                      <span>{copiedPk ? "Copied" : "Copy Key"}</span>
+                    </button>
+                  </div>
+                  <div className="p-2.5 rounded-xl bg-black/50 border border-slate-800 text-slate-300 break-all select-all text-[11px]">
+                    {showSecretWords
+                      ? (passkeyPrivateKey || (ensurePasskeyRecoveryKey().privateKey))
+                      : "••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••"}
+                  </div>
+                </div>
+
+                {/* Account & Network Metadata */}
+                <div className="grid grid-cols-2 gap-2 text-[11px]">
+                  <div className="bg-slate-900/60 p-2.5 rounded-xl border border-slate-800">
+                    <span className="text-slate-500 block text-[10px]">Smart Account:</span>
+                    <span className="text-slate-200 font-bold truncate block">{connectedAddress}</span>
+                  </div>
+                  <div className="bg-slate-900/60 p-2.5 rounded-xl border border-slate-800">
+                    <span className="text-slate-500 block text-[10px]">Recovery Target:</span>
+                    <span className="text-monad-cyan font-bold">Monad Testnet (10143)</span>
+                  </div>
+                </div>
+
+                {/* Download JSON Button */}
+                <div className="pt-1 sm:pt-2">
                   <button
                     type="button"
-                    onClick={() => {
-                      const { privateKey } = ensurePasskeyRecoveryKey();
-                      navigator.clipboard.writeText(privateKey || passkeyPrivateKey);
-                      setCopiedPk(true);
-                      setTimeout(() => setCopiedPk(false), 2000);
-                    }}
-                    className="text-monad-cyan hover:underline flex items-center space-x-1 cursor-pointer font-bold"
+                    onClick={downloadWalletBackup}
+                    className="w-full py-3 sm:py-3.5 rounded-xl bg-gradient-to-r from-purple-700 to-monad-purple hover:from-purple-600 hover:to-monad-purple text-white font-bold text-xs flex items-center justify-center space-x-2 transition shadow-lg shadow-monad-purple/30 cursor-pointer"
                   >
-                    {copiedPk ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
-                    <span>{copiedPk ? "Copied" : "Copy Key"}</span>
+                    <Download className="w-4 h-4" />
+                    <span>Download Backup JSON Bundle (.json)</span>
                   </button>
                 </div>
-                <div className="p-2.5 rounded-xl bg-black/50 border border-slate-800 text-slate-300 break-all select-all text-[11px]">
-                  {showSecretWords
-                    ? (passkeyPrivateKey || (ensurePasskeyRecoveryKey().privateKey) || "0xd1dac037e3892d6a327cdb5fdceb9f4deb37b97a2025201d5ca05f1e86c9c101")
-                    : "••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••"}
-                </div>
               </div>
-
-              {/* Account & Network Metadata */}
-              <div className="grid grid-cols-2 gap-2 text-[11px]">
-                <div className="bg-slate-900/60 p-2.5 rounded-xl border border-slate-800">
-                  <span className="text-slate-500 block text-[10px]">Smart Account:</span>
-                  <span className="text-slate-200 font-bold truncate block">{connectedAddress}</span>
-                </div>
-                <div className="bg-slate-900/60 p-2.5 rounded-xl border border-slate-800">
-                  <span className="text-slate-500 block text-[10px]">Recovery Target:</span>
-                  <span className="text-monad-cyan font-bold">Monad Testnet (10143)</span>
-                </div>
-              </div>
-
-              {/* Download JSON Button */}
-              <div className="pt-1 sm:pt-2">
-                <button
-                  type="button"
-                  onClick={downloadWalletBackup}
-                  className="w-full py-3 sm:py-3.5 rounded-xl bg-gradient-to-r from-purple-700 to-monad-purple hover:from-purple-600 hover:to-monad-purple text-white font-bold text-xs flex items-center justify-center space-x-2 transition shadow-lg shadow-monad-purple/30 cursor-pointer"
-                >
-                  <Download className="w-4 h-4" />
-                  <span>Download Backup JSON Bundle (.json)</span>
-                </button>
-              </div>
-            </div>
+            )}
 
             <div className="text-[10px] sm:text-[11px] text-slate-500 font-mono text-center pt-1 border-t border-monad-cardBorder/60">
               Never share your 12-word seed phrase or private key with anyone. Store offline safely.

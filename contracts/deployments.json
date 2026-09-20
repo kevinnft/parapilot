@@ -14,8 +14,8 @@
       "explorer": "https://testnet.monadexplorer.com/address/0x8A55d40977C49D4Ac5C569ebA4631D4e9026C592"
     },
     "MockDEX": {
-      "address": "0xf33d5C786f1f6fD6890CE7ab9Ad7beAC363443B1",
-      "explorer": "https://testnet.monadexplorer.com/address/0xf33d5C786f1f6fD6890CE7ab9Ad7beAC363443B1"
+      "address": "0xbc12983288B4225205Dc53702B1eba6298f94376",
+      "explorer": "https://testnet.monadexplorer.com/address/0xbc12983288B4225205Dc53702B1eba6298f94376"
     },
     "USDC": {
       "address": "0xd4309703c783E671F5Ef61630Cb576916cE03200",
@@ -69,5 +69,20 @@
       "explorer": "https://testnet.monadexplorer.com/tx/0xe5345c41f51ddc62dff7947a219b76c80a435ccd00c8037966a843819af333b9"
     }
   ],
-  "updatedAt": "2026-09-20 12:45:00 UTC"
+  "updatedAt": "2026-09-20 12:45:00 UTC",
+  "multiTokenSwapsVerified": {
+    "dexAddress": "0xbc12983288B4225205Dc53702B1eba6298f94376",
+    "monToUsdc": {
+      "tx": "0xaa1cfa62834c7e7dea9d76127dcaee7cb2c50fe6508eb1444ae08923eac2bd9a",
+      "status": "SUCCESS (0x1)"
+    },
+    "usdcToMon": {
+      "tx": "0xcbb1549faeab5455c9ebeafe67281ec1153ba4933e0dee14ba083b19916669f4",
+      "status": "SUCCESS (0x1)"
+    },
+    "usdcToWeth": {
+      "tx": "0xa175e859b82a65845a8269985f2e72daf3791846af095f89fd942895a0eae361",
+      "status": "SUCCESS (0x1)"
+    }
+  }
 }
