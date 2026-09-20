@@ -1,0 +1,32 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --foreground-rgb: 255, 255, 255;
+  --background-start-rgb: 11, 9, 20;
+  --background-end-rgb: 15, 12, 28;
+}
+
+body {
+  color: rgb(var(--foreground-rgb));
+  background: radial-gradient(circle at 50% 0%, #1a153b 0%, #0b0914 70%);
+  min-height: 100vh;
+  font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+}
+
+/* Custom scrollbars for telemetry terminal */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: #141124;
+}
+::-webkit-scrollbar-thumb {
+  background: #2b254d;
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #836ef9;
+}
