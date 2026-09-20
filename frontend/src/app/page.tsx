@@ -1013,8 +1013,8 @@ export default function Home() {
               <span>Portfolio ({portfolioTokens.length})</span>
             </button>
 
-            {/* Backup Wallet Button in Navbar */}
-            {connectedAddress && (
+            {/* Backup Wallet Button in Navbar (Hidden for Demo Account) */}
+            {connectedAddress && connectionMethod !== "demo" && connectedAddress.toLowerCase() !== "0x6e95951bbac8454950508394ec0f5fccf6c4d8bf" && (
               <button
                 onClick={() => setShowBackupModal(true)}
                 className="hidden sm:flex items-center space-x-1.5 px-3 py-1.5 rounded-xl bg-purple-950/40 border border-purple-800/60 hover:border-monad-cyan text-xs font-mono text-purple-200 hover:text-white transition shadow-sm cursor-pointer"
@@ -1787,17 +1787,19 @@ export default function Home() {
                 </div>
 
                 <div className="space-y-2">
-                  {/* Backup Wallet Button */}
-                  <button
-                    onClick={() => {
-                      setShowWalletModal(false);
-                      setShowBackupModal(true);
-                    }}
-                    className="w-full py-2.5 rounded-xl bg-gradient-to-r from-purple-900/80 to-monad-purple/60 border border-purple-600/70 hover:border-monad-cyan text-white flex items-center justify-center space-x-2 text-xs font-semibold font-mono transition cursor-pointer shadow-md shadow-monad-purple/20"
-                  >
-                    <ShieldCheck className="w-4 h-4 text-monad-cyan" />
-                    <span>Backup Wallet (Export Recovery)</span>
-                  </button>
+                  {/* Backup Wallet Button (Hidden for Demo Account) */}
+                  {connectionMethod !== "demo" && connectedAddress?.toLowerCase() !== "0x6e95951bbac8454950508394ec0f5fccf6c4d8bf" && (
+                    <button
+                      onClick={() => {
+                        setShowWalletModal(false);
+                        setShowBackupModal(true);
+                      }}
+                      className="w-full py-2.5 rounded-xl bg-gradient-to-r from-purple-900/80 to-monad-purple/60 border border-purple-600/70 hover:border-monad-cyan text-white flex items-center justify-center space-x-2 text-xs font-semibold font-mono transition cursor-pointer shadow-md shadow-monad-purple/20"
+                    >
+                      <ShieldCheck className="w-4 h-4 text-monad-cyan" />
+                      <span>Backup Wallet (Export Recovery)</span>
+                    </button>
+                  )}
 
                   <a
                     href={`https://testnet.monadexplorer.com/address/${connectedAddress}`}
