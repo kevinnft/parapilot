@@ -45,6 +45,10 @@ export default function Home() {
   const [isSavingPolicy, setIsSavingPolicy] = useState(false);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
 
+  // Custom Swap State
+  const [monToSwap, setMonToSwap] = useState<string>("2.5");
+  const [selectedTargetToken, setSelectedTargetToken] = useState<string>("USDC");
+
   // Modals
   const [showPasskeyModal, setShowPasskeyModal] = useState(false);
   const [showContractModal, setShowContractModal] = useState(false);
@@ -126,25 +130,44 @@ export default function Home() {
     setLogs((prev) => [...prev, newLog]);
   };
 
-  // Simulates a legitimate AI trade
-  const simulateValidTrade = (tradeAmount: number = 8.5) => {
+  // Simulates a custom AI trade
+  const simulateCustomSwap = () => {
+    const amountMon = parseFloat(monToSwap);
+    if (isNaN(amountMon) || amountMon <= 0) {
+      addLog("BRAIN", "warning", "Invalid amount: Please specify a valid MON amount to swap.");
+      return;
+    }
+
     if (!isSessionActive) {
       addLog("VALIDATOR", "error", "Execution REVERTED: Session key has been REVOKED by owner.");
       return;
     }
-    if (spentToday + tradeAmount > dailyLimit) {
-      addLog("BRAIN", "warning", `AI calculating swap: Trade amount ($${tradeAmount}) exceeds remaining 24h quota.`);
-      addLog("VALIDATOR", "error", `🛑 REVERTED: SpendLimitExceeded() - Attempted $${tradeAmount} with only $${(dailyLimit - spentToday).toFixed(2)} remaining.`);
+
+    // Check token whitelist
+    if (!allowedTokens[selectedTargetToken as keyof typeof allowedTokens]) {
+      addLog("VALIDATOR", "error", `🛑 REVERTED: TokenNotWhitelisted(${selectedTargetToken}) - Target asset is disabled in policy.`);
       return;
     }
 
-    addLog("BRAIN", "info", `Identified 0.5% spread on Kuru DEX: Swap 5 MON -> ${(tradeAmount * 2.15).toFixed(2)} USDC.`);
-    addLog("ZERION", "info", "Zerion API confirms token reputation and liquidity depth > $250k.");
-    addLog("VALIDATOR", "success", `Policy Check Passed: Kuru DEX is Whitelisted, Spend ($${tradeAmount}) < Limit ($${dailyLimit}).`);
+    const monPrice = 3.0; // 1 MON = $3.00 USD
+    const spendUsd = +(amountMon * monPrice).toFixed(2);
+    const tokenReceived = +(amountMon * 2.95).toFixed(2);
+    const remainingQuota = +(dailyLimit - spentToday).toFixed(2);
+
+    if (spentToday + spendUsd > dailyLimit) {
+      addLog("BRAIN", "warning", `AI calculating swap: Trade of ${amountMon} MON ($${spendUsd}) exceeds 24h limit.`);
+      addLog("VALIDATOR", "error", `🛑 REVERTED: SpendLimitExceeded() - Attempted $${spendUsd} with only $${remainingQuota} quota remaining.`);
+      addLog("MONAD_EVM", "warning", "On-chain state protected: Zero funds moved from ParaPilotAccount.");
+      return;
+    }
+
+    addLog("BRAIN", "info", `Arbitrage identified on Kuru DEX: Swap ${amountMon} MON -> ${tokenReceived} ${selectedTargetToken}.`);
+    addLog("ZERION", "info", `Zerion Builder API verifies ${selectedTargetToken} reputation & liquidity depth.`);
+    addLog("VALIDATOR", "success", `Policy Passed: Kuru DEX Whitelisted, Spend ($${spendUsd}) <= Remaining Limit ($${remainingQuota}).`);
     setTimeout(() => {
       const mockHash = "0x" + Array.from({length: 40}, () => Math.floor(Math.random()*16).toString(16)).join("");
-      addLog("MONAD_EVM", "success", `Tx Confirmed on Monad Parallel EVM (Block #${51550930 + Math.floor(Math.random()*20)}, Latency: 0.38s). Hash: ${mockHash.slice(0, 10)}...${mockHash.slice(-4)}`);
-      setSpentToday((prev) => Math.min(dailyLimit, +(prev + tradeAmount).toFixed(2)));
+      addLog("MONAD_EVM", "success", `Tx Confirmed on Monad Parallel EVM (Block #${51550950 + Math.floor(Math.random()*25)}, Latency: 0.35s). Hash: ${mockHash.slice(0, 10)}...${mockHash.slice(-4)}`);
+      setSpentToday((prev) => Math.min(dailyLimit, +(prev + spendUsd).toFixed(2)));
     }, 350);
   };
 
@@ -544,34 +567,108 @@ export default function Home() {
                 <div ref={terminalEndRef} />
               </div>
 
-              {/* Interactive Demo Action Triggers */}
-              <div className="pt-2 space-y-2.5">
-                <p className="text-xs text-slate-400 font-medium">
-                  Test Agent Scenarios Live (For Hackathon Judges):
-                </p>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+              {/* Interactive Autonomous Swap Simulator */}
+              <div className="pt-2 space-y-3 bg-slate-900/50 p-4 rounded-2xl border border-monad-cardBorder/80">
+                <div className="flex justify-between items-center">
+                  <div className="flex items-center space-x-2">
+                    <Zap className="w-4 h-4 text-monad-cyan" />
+                    <span className="text-xs font-bold text-white tracking-wide uppercase">
+                      Autonomous Swap Simulator
+                    </span>
+                  </div>
+                  <div className="text-[11px] font-mono">
+                    {(() => {
+                      const amount = parseFloat(monToSwap) || 0;
+                      const costUsd = +(amount * 3.0).toFixed(2);
+                      const remaining = +(dailyLimit - spentToday).toFixed(2);
+                      if (amount <= 0) return <span className="text-slate-500">Enter MON amount</span>;
+                      if (costUsd <= remaining) {
+                        return <span className="text-emerald-400 font-semibold">✓ Safe (${costUsd} / ${remaining} left)</span>;
+                      } else {
+                        return <span className="text-rose-400 font-semibold">⚠️ Exceeds Quota by ${(costUsd - remaining).toFixed(2)}</span>;
+                      }
+                    })()}
+                  </div>
+                </div>
+
+                {/* Amount Input & Target Token Selector */}
+                <div className="grid grid-cols-1 sm:grid-cols-12 gap-2">
+                  <div className="sm:col-span-7 relative">
+                    <input
+                      type="number"
+                      step="0.5"
+                      min="0.1"
+                      value={monToSwap}
+                      onChange={(e) => setMonToSwap(e.target.value)}
+                      placeholder="Amount to swap"
+                      className="w-full bg-[#0E0C17] border border-slate-700/80 focus:border-monad-purple rounded-xl px-3.5 py-2.5 text-sm font-mono text-white placeholder-slate-600 outline-none transition"
+                    />
+                    <div className="absolute right-3 top-2.5 flex items-center space-x-1.5 text-xs text-monad-purple font-mono font-bold pointer-events-none">
+                      <span>MON</span>
+                      <span className="text-[10px] text-slate-500 font-normal">(~$3.00)</span>
+                    </div>
+                  </div>
+
+                  <div className="sm:col-span-5 flex items-center space-x-1 bg-[#0E0C17] border border-slate-700/80 rounded-xl p-1">
+                    {(["USDC", "WETH", "KURU"] as const).map((tok) => (
+                      <button
+                        key={tok}
+                        type="button"
+                        onClick={() => setSelectedTargetToken(tok)}
+                        className={`flex-1 py-1.5 text-xs font-mono font-semibold rounded-lg transition ${
+                          selectedTargetToken === tok
+                            ? "bg-monad-purple text-white shadow-sm"
+                            : "text-slate-400 hover:text-slate-200"
+                        }`}
+                      >
+                        {tok}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Quick Presets */}
+                <div className="flex items-center space-x-1.5 text-[11px] font-mono text-slate-400">
+                  <span className="text-slate-500">Quick:</span>
+                  {["0.5", "1.0", "2.5", "5.0", "15.0"].map((preset) => (
+                    <button
+                      key={preset}
+                      type="button"
+                      onClick={() => setMonToSwap(preset)}
+                      className={`px-2 py-0.5 rounded-md border text-[10px] transition ${
+                        monToSwap === preset
+                          ? "bg-monad-purple/30 border-monad-purple text-monad-cyan"
+                          : "bg-slate-800/80 border-slate-700 hover:border-slate-500 text-slate-300"
+                      }`}
+                    >
+                      {preset} MON
+                    </button>
+                  ))}
                   <button
-                    onClick={() => simulateValidTrade(8.5)}
-                    className="flex items-center justify-center space-x-1.5 py-2.5 px-3 rounded-xl bg-gradient-to-r from-purple-700 to-monad-purple hover:from-purple-600 hover:to-monad-purple text-white text-xs font-semibold shadow-md shadow-monad-purple/20 transition"
+                    type="button"
+                    onClick={() => setMonToSwap(((dailyLimit - spentToday) / 3.0).toFixed(1))}
+                    className="px-2 py-0.5 rounded-md bg-purple-950/60 border border-purple-800 text-purple-300 hover:bg-purple-900/60 text-[10px] transition"
+                  >
+                    MAX QUOTA
+                  </button>
+                </div>
+
+                {/* Action Buttons */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-1">
+                  <button
+                    onClick={simulateCustomSwap}
+                    className="flex items-center justify-center space-x-2 py-3 px-4 rounded-xl bg-gradient-to-r from-purple-700 to-monad-purple hover:from-purple-600 hover:to-monad-purple text-white text-xs font-bold shadow-md shadow-monad-purple/30 transition"
                   >
                     <Play className="w-3.5 h-3.5 fill-current" />
-                    <span>Swap 5 MON ($8.50)</span>
-                  </button>
-
-                  <button
-                    onClick={() => simulateValidTrade(35.0)}
-                    className="flex items-center justify-center space-x-1.5 py-2.5 px-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-semibold transition"
-                  >
-                    <Play className="w-3.5 h-3.5 fill-current text-monad-cyan" />
-                    <span>Heavy Trade ($35.00)</span>
+                    <span>Swap {monToSwap || "0"} MON via Agent</span>
                   </button>
 
                   <button
                     onClick={simulateRogueAttack}
-                    className="flex items-center justify-center space-x-1.5 py-2.5 px-3 rounded-xl bg-slate-900 border border-rose-800/60 hover:bg-rose-950/40 text-rose-300 text-xs font-semibold transition"
+                    className="flex items-center justify-center space-x-2 py-3 px-4 rounded-xl bg-slate-900 border border-rose-800/60 hover:bg-rose-950/40 text-rose-300 text-xs font-semibold transition"
                   >
                     <AlertTriangle className="w-3.5 h-3.5 text-rose-400" />
-                    <span>Simulate Rogue Drain</span>
+                    <span>Simulate Rogue Attack (Revert)</span>
                   </button>
                 </div>
               </div>
