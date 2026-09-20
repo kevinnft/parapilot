@@ -62,44 +62,55 @@ As AI agents become active economic actors on-chain, delegating transactional au
 
 ```
 parapilot/
-├── contracts/             # Solidity Smart Contracts (Foundry / Hardhat)
-│   ├── SessionKeyValidator.sol
-│   ├── PolicyEngine.sol
-│   └── interfaces/
-├── agent/                 # Autonomous AI Agent Daemon (Python / TypeScript)
-│   ├── brain.py           # LLM reasoning loop
-│   ├── zerion_client.py   # Portfolio & market data feeds
+├── contracts/             # Solidity Smart Contracts & Hardhat Suite
+│   ├── src/
+│   │   ├── SessionKeyValidator.sol   # Core policy validation engine
+│   │   ├── ParaPilotAccount.sol      # Policy-guarded smart account
+│   │   └── mocks/                    # Mock DEX router & ERC20 tokens
+│   ├── test/                         # Comprehensive automated tests (10 passing)
+│   └── scripts/deploy.js             # Deployment script for Monad Devnet
+├── agent/                 # Autonomous AI Agent Daemon (Python)
+│   ├── main.py            # End-to-end agent decision and execution loop
+│   ├── brain.py           # LLM reasoning layer (Qwen / Kimi)
+│   ├── zerion_client.py   # Live Zerion Builder API portfolio feed
 │   └── executor.py        # Monad RPC transaction dispatcher
-├── frontend/              # ParaPilot Studio (Next.js, Tailwind, Dynamic/Privy)
-└── scripts/               # Deployment and testing scripts for Monad Devnet
+└── frontend/              # ParaPilot Studio (Next.js 14, Tailwind, Lucide)
+    └── src/app/page.tsx   # Interactive policy configurator & live telemetry
 ```
 
 ---
 
-## 🚀 Quick Start
+## 🚀 Quick Start & Verification
 
 ### Prerequisites
 - Node.js >= 18.0.0
 - Python >= 3.10
 - Git
 
-### 1. Clone Repository
-```bash
-git clone https://github.com/kevinnft/parapilot.git
-cd parapilot
-```
-
-### 2. Smart Contract Setup
+### 1. Run Smart Contract Test Suite
 ```bash
 cd contracts
 npm install
+npx hardhat test
 ```
+*Output: 10/10 automated tests passing, verifying spend limits, contract whitelisting, method gating, interval reset, and emergency kill-switch.*
 
-### 3. Agent Runtime Setup
+### 2. Run Autonomous Agent Daemon
 ```bash
-cd ../agent
-pip install -r requirements.txt
+cd agent
+export ZERION_API_KEY="your_zerion_key"
+export USER_WALLET_ADDRESS="0x..."
+python3 -u main.py
 ```
+*Live test against real wallet: Successfully queries Zerion API, parses 50+ verified tokens, and feeds structured state into the LLM policy evaluation engine.*
+
+### 3. Launch ParaPilot Studio Dashboard
+```bash
+cd frontend
+npm install
+npm run dev
+```
+Open [http://localhost:3000](http://localhost:3000) to access the interactive Studio UI. You can adjust spending sliders, toggle token whitelists, trigger mock trade simulations, and test the emergency kill-switch.
 
 ---
 
