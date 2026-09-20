@@ -1,14 +1,16 @@
 const { ethers } = require("hardhat");
+const fs = require("fs");
+const path = require("path");
 
 async function main() {
   console.log("==================================================");
-  console.log("Deploying ParaPilot Policy Infrastructure to Monad");
+  console.log("Deploying ParaPilot Policy Infrastructure to Monad Testnet");
   console.log("==================================================");
 
   const [deployer] = await ethers.getSigners();
   console.log("Deployer Address:", deployer.address);
   const balance = await ethers.provider.getBalance(deployer.address);
-  console.log("Deployer Balance:", ethers.formatEther(balance), "MON / ETH");
+  console.log("Deployer Balance:", ethers.formatEther(balance), "MON");
 
   // 1. Deploy SessionKeyValidator
   console.log("\n[1] Deploying SessionKeyValidator...");
@@ -16,21 +18,53 @@ async function main() {
   const validator = await Validator.deploy();
   await validator.waitForDeployment();
   const validatorAddress = await validator.getAddress();
+  const txValHash = validator.deploymentTransaction() ? validator.deploymentTransaction().hash : "N/A";
   console.log("✅ SessionKeyValidator deployed to:", validatorAddress);
+  console.log("   Tx Hash:", txValHash);
 
   // 2. Deploy sample ParaPilotAccount
-  console.log("\n[2] Deploying sample ParaPilotAccount...");
+  console.log("\n[2] Deploying ParaPilotAccount (Smart Account)...");
   const Account = await ethers.getContractFactory("ParaPilotAccount");
   const account = await Account.deploy(deployer.address, validatorAddress);
   await account.waitForDeployment();
   const accountAddress = await account.getAddress();
+  const txAccHash = account.deploymentTransaction() ? account.deploymentTransaction().hash : "N/A";
   console.log("✅ ParaPilotAccount deployed to:", accountAddress);
+  console.log("   Tx Hash:", txAccHash);
 
+  // 3. Fund ParaPilotAccount with 0.1 MON
+  console.log("\n[3] Funding ParaPilotAccount with 0.1 MON for agent operations...");
+  const fundTx = await deployer.sendTransaction({
+    to: accountAddress,
+    value: ethers.parseEther("0.1"),
+  });
+  await fundTx.wait();
+  console.log("✅ Account Funded! Tx Hash:", fundTx.hash);
+
+  const summary = {
+    network: "monadTestnet",
+    chainId: (await ethers.provider.getNetwork()).chainId.toString(),
+    deployer: deployer.address,
+    contracts: {
+      SessionKeyValidator: {
+        address: validatorAddress,
+        deploymentTx: txValHash,
+        explorerUrl: `https://testnet.monadexplorer.com/address/${validatorAddress}`
+      },
+      ParaPilotAccount: {
+        address: accountAddress,
+        deploymentTx: txAccHash,
+        explorerUrl: `https://testnet.monadexplorer.com/address/${accountAddress}`
+      }
+    },
+    fundingTx: fundTx.hash,
+    timestamp: new Date().toISOString()
+  };
+
+  const outFile = path.join(__dirname, "../deployments.json");
+  fs.writeFileSync(outFile, JSON.stringify(summary, null, 2));
   console.log("\n==================================================");
-  console.log("Deployment Summary:");
-  console.log("  - Network:           Monad (ChainID: " + (await ethers.provider.getNetwork()).chainId + ")");
-  console.log("  - SessionValidator: ", validatorAddress);
-  console.log("  - Account Template: ", accountAddress);
+  console.log("Deployment details written to:", outFile);
   console.log("==================================================");
 }
 

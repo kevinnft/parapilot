@@ -65,7 +65,7 @@ export default function Home() {
 
   // Real Zerion Portfolio Data
   const zerionAssets = [
-    { symbol: "ETH / MON", name: "Native Monad", qty: "0.00054", usd: "$1.40", verified: true },
+    { symbol: "MON", name: "Native Monad Testnet", qty: "4.9314", usd: "$14.79", verified: true },
     { symbol: "rsETH", name: "Kelp DAO Restaked ETH", qty: "0.000045", usd: "$0.13", verified: true },
     { symbol: "PENDLE", name: "Pendle Finance", qty: "0.0235", usd: "$0.06", verified: true },
     { symbol: "AVAX", name: "Avalanche", qty: "0.0058", usd: "$0.06", verified: true },
@@ -79,7 +79,7 @@ export default function Home() {
       timestamp: "12:04:11",
       source: "ZERION",
       type: "info",
-      message: "Fetched 53 non-trash token positions for 0xb1ca...2c41 via Zerion Builder API.",
+      message: "Fetched verified token positions for 0x6E95...d8Bf via Zerion Builder API.",
     },
     {
       id: "2",
@@ -93,7 +93,14 @@ export default function Home() {
       timestamp: "12:04:13",
       source: "VALIDATOR",
       type: "success",
-      message: "SessionKeyValidator: Session 0x7179...88f6 is ACTIVE. Quota: $35.80 remaining.",
+      message: "SessionKeyValidator (0x0102...57C4): Session 0x4612...D0cc is ACTIVE. Quota: $35.80 remaining.",
+    },
+    {
+      id: "4",
+      timestamp: "12:04:14",
+      source: "MONAD_EVM",
+      type: "success",
+      message: "Live Monad Testnet Tx Confirmed: 0x1d745562126303ca67dcbb9c8694b40df963de08917deaf52d3e9ec30a997364",
     },
   ]);
 
@@ -189,7 +196,7 @@ export default function Home() {
   };
 
   const copyContractAddress = () => {
-    navigator.clipboard.writeText("0x5FbDB2315678afecb367f032d93F642f64180aa3");
+    navigator.clipboard.writeText("0x01022d952087B7FBacc8DA53478B0F555Fe457C4");
     setCopiedContract(true);
     setTimeout(() => setCopiedContract(false), 2000);
   };
@@ -242,7 +249,7 @@ export default function Home() {
               className="flex items-center space-x-2 px-3.5 py-1.5 rounded-xl bg-monad-card border border-monad-cardBorder hover:border-monad-purple transition shadow-sm text-sm"
             >
               <Fingerprint className="w-4 h-4 text-monad-purple" />
-              <span className="font-mono text-xs">0xb1ca...2c41</span>
+              <span className="font-mono text-xs">0x6E95...d8Bf</span>
               <span className="text-[10px] bg-emerald-950 text-emerald-400 border border-emerald-800 px-1.5 py-0.5 rounded font-mono">Passkey</span>
             </button>
           </div>
@@ -261,14 +268,14 @@ export default function Home() {
             <div className="text-xl font-bold font-mono">
               {isSessionActive ? (
                 <span className="text-emerald-400 flex items-center space-x-2">
-                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping mr-2"></span>
+                  <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-ping mr-2"></span>
                   ARMED & ACTIVE
                 </span>
               ) : (
                 <span className="text-rose-500">REVOKED ON-CHAIN</span>
               )}
             </div>
-            <p className="text-xs text-slate-500 mt-2 font-mono">Key: 0x7179...88f6</p>
+            <p className="text-xs text-slate-500 mt-2 font-mono">Key: 0x4612...D0cc</p>
           </div>
 
           <div className="bg-monad-card border border-monad-cardBorder rounded-2xl p-5 shadow-sm">
@@ -300,7 +307,7 @@ export default function Home() {
               SessionKeyValidator.sol
             </div>
             <p className="text-xs text-monad-cyan/80 mt-2 font-mono flex items-center justify-between">
-              <span>0x5FbDB23...aa3</span>
+              <span>0x01022d9...57C4</span>
               <span className="text-[10px] underline">View ABI</span>
             </p>
           </div>
@@ -590,13 +597,13 @@ export default function Home() {
               <div>
                 <span className="text-slate-400 block">Owner Address (WebAuthn / P256):</span>
                 <span className="text-slate-200 break-all bg-slate-900/80 p-2 rounded block mt-1">
-                  0xb1caec6d89f2d62db3416054096070c340dc2c41
+                  0x6E95951bbAc8454950508394EC0F5fcCF6c4d8Bf
                 </span>
               </div>
               <div>
                 <span className="text-slate-400 block">Delegated Agent Session Key:</span>
                 <span className="text-monad-cyan break-all bg-slate-900/80 p-2 rounded block mt-1">
-                  0x7179b7746187768e7b165b5006b52dc2744888f6
+                  0x4612501ad4F82475f3F94458c2cc4257267dD0cc
                 </span>
               </div>
               <div className="grid grid-cols-2 gap-2 text-[11px] pt-1">
@@ -635,7 +642,7 @@ export default function Home() {
             </div>
             <div className="space-y-3 text-xs">
               <div className="flex justify-between items-center bg-slate-900/80 p-2.5 rounded-xl font-mono text-[11px]">
-                <span className="text-slate-300">0x5FbDB2315678afecb367f032d93F642f64180aa3</span>
+                <span className="text-slate-300">0x01022d952087B7FBacc8DA53478B0F555Fe457C4</span>
                 <button onClick={copyContractAddress} className="text-monad-cyan hover:text-white flex items-center space-x-1">
                   {copiedContract ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
                   <span>{copiedContract ? "Copied" : "Copy"}</span>

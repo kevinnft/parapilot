@@ -58,6 +58,19 @@ As AI agents become active economic actors on-chain, delegating transactional au
 
 ---
 
+## 🌐 Live Verified Deployments on Monad Testnet
+
+The core contracts are deployed and verified live on **Monad Testnet (Chain ID: 10143)**:
+
+| Component | Monad Testnet Address / Tx | Explorer Link |
+| :--- | :--- | :--- |
+| **SessionKeyValidator** | `0x01022d952087B7FBacc8DA53478B0F555Fe457C4` | [View on Explorer](https://testnet.monadexplorer.com/address/0x01022d952087B7FBacc8DA53478B0F555Fe457C4) |
+| **ParaPilotAccount** | `0x8A55d40977C49D4Ac5C569ebA4631D4e9026C592` | [View on Explorer](https://testnet.monadexplorer.com/address/0x8A55d40977C49D4Ac5C569ebA4631D4e9026C592) |
+| **Policy Registration Tx** | `0xffc34acf9931...` | [View Tx](https://testnet.monadexplorer.com/tx/0xffc34acf99310ecc27de96fad223a742fa31defa607e07dce61bf1cf3bec26fd) |
+| **Autonomous Agent Execution Tx** | `0x1d7455621263...` | [View Tx](https://testnet.monadexplorer.com/tx/0x1d745562126303ca67dcbb9c8694b40df963de08917deaf52d3e9ec30a997364) |
+
+---
+
 ## 📂 Repository Structure
 
 ```

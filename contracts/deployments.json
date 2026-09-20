@@ -1,0 +1,28 @@
+{
+  "network": "Monad Testnet",
+  "chainId": 10143,
+  "deployer": "0x6E95951bbAc8454950508394EC0F5fcCF6c4d8Bf",
+  "contracts": {
+    "SessionKeyValidator": {
+      "address": "0x01022d952087B7FBacc8DA53478B0F555Fe457C4",
+      "explorer": "https://testnet.monadexplorer.com/address/0x01022d952087B7FBacc8DA53478B0F555Fe457C4"
+    },
+    "ParaPilotAccount": {
+      "address": "0x8A55d40977C49D4Ac5C569ebA4631D4e9026C592",
+      "txHash": "0x29bfdbe7c7b9be78fe3ca6e6336b0bd07f8526798f1748f4f9dad3bc7f7e93ae",
+      "explorer": "https://testnet.monadexplorer.com/address/0x8A55d40977C49D4Ac5C569ebA4631D4e9026C592"
+    }
+  },
+  "interactions": {
+    "accountFundingTx": {
+      "hash": "0x815117309a1d9d211ab36df66919166711cb5cf33fa676cb2baa22567b32da82",
+      "explorer": "https://testnet.monadexplorer.com/tx/0x815117309a1d9d211ab36df66919166711cb5cf33fa676cb2baa22567b32da82"
+    },
+    "policyRegistrationTx": {
+      "hash": "0x04084eb7bb4b6c2e50634696e33b7c6b22f1c2b8c54ec3cb9446e07f11a61e51",
+      "agentKey": "0x7179b7746187768e7b165b5006b52dc2744888f6",
+      "explorer": "https://testnet.monadexplorer.com/tx/0x04084eb7bb4b6c2e50634696e33b7c6b22f1c2b8c54ec3cb9446e07f11a61e51"
+    }
+  },
+  "updatedAt": "2026-09-20 09:47:57 UTC"
+}
