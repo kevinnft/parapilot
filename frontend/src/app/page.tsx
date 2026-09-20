@@ -308,9 +308,11 @@ export default function Home() {
   const getOkxProvider = () => {
     if (typeof window === "undefined") return null;
     const w = window as any;
-    const eip6963Okx = eip6963Wallets.find(
-      (item) => item.info?.rdns?.includes("okx") || item.info?.name?.toLowerCase().includes("okx")
-    )?.provider;
+    const eip6963Okx = eip6963Wallets.find((item) => {
+      const rdns = String(item?.info?.rdns || "").toLowerCase();
+      const name = String(item?.info?.name || "").toLowerCase();
+      return rdns.includes("okx") || name.includes("okx");
+    })?.provider;
     if (eip6963Okx) return eip6963Okx;
     if (w.okxwallet) return w.okxwallet;
     if (w.ethereum?.isOkxWallet || w.ethereum?.isOKExWallet) return w.ethereum;
@@ -325,9 +327,11 @@ export default function Home() {
   const getMetaMaskProvider = () => {
     if (typeof window === "undefined") return null;
     const w = window as any;
-    const eip6963MM = eip6963Wallets.find(
-      (item) => item.info?.rdns?.includes("metamask") || item.info?.name?.toLowerCase().includes("metamask")
-    )?.provider;
+    const eip6963MM = eip6963Wallets.find((item) => {
+      const rdns = String(item?.info?.rdns || "").toLowerCase();
+      const name = String(item?.info?.name || "").toLowerCase();
+      return rdns.includes("metamask") || name.includes("metamask");
+    })?.provider;
     if (eip6963MM) return eip6963MM;
     if (w.ethereum?.isMetaMask && !w.ethereum?.isOkxWallet && !w.ethereum?.isOKExWallet) return w.ethereum;
     if (w.ethereum?.providers?.length) {
@@ -350,37 +354,54 @@ export default function Home() {
 
     // Check direct providers after DOM loads
     const checkProviders = () => {
-      const okx = getOkxProvider();
-      const mm = getMetaMaskProvider();
-      setHasOkx(Boolean(okx));
-      setHasMetaMask(Boolean(mm));
+      try {
+        const okx = getOkxProvider();
+        const mm = getMetaMaskProvider();
+        setHasOkx(Boolean(okx));
+        setHasMetaMask(Boolean(mm));
+      } catch (e) {
+        // ignore provider check errors
+      }
     };
     checkProviders();
     const timer = setTimeout(checkProviders, 600);
 
-    // EIP-6963 Multi-Injected Provider Discovery
+    // EIP-6963 Multi-Injected Provider Discovery (safe wrapped)
     const onAnnounceProvider = (event: any) => {
-      const detail = event.detail;
-      if (detail && detail.info && detail.provider) {
-        setEip6963Wallets((prev) => {
-          if (prev.some((p) => p.info.rdns === detail.info.rdns)) return prev;
-          return [...prev, detail];
-        });
-        if (detail.info.rdns?.includes("okx") || detail.info.name?.toLowerCase().includes("okx")) {
-          setHasOkx(true);
+      try {
+        const detail = event?.detail;
+        if (detail && detail.info && detail.provider) {
+          const rdns = String(detail.info.rdns || "").toLowerCase();
+          const name = String(detail.info.name || "").toLowerCase();
+          setEip6963Wallets((prev) => {
+            if (prev.some((p) => p?.info?.rdns && p.info.rdns === detail.info.rdns)) return prev;
+            return [...prev, detail];
+          });
+          if (rdns.includes("okx") || name.includes("okx")) {
+            setHasOkx(true);
+          }
+          if (rdns.includes("metamask") || name.includes("metamask")) {
+            setHasMetaMask(true);
+          }
         }
-        if (detail.info.rdns?.includes("metamask") || detail.info.name?.toLowerCase().includes("metamask")) {
-          setHasMetaMask(true);
-        }
+      } catch (err) {
+        console.error("EIP-6963 error:", err);
       }
     };
 
-    window.addEventListener("eip6963:announceProvider", onAnnounceProvider);
-    window.dispatchEvent(new Event("eip6963:requestProvider"));
+    try {
+      window.addEventListener("eip6963:announceProvider", onAnnounceProvider);
+      window.dispatchEvent(new Event("eip6963:requestProvider"));
+    } catch (e) {}
 
-    // Check if user previously connected on this device
-    const savedAddr = localStorage.getItem("parapilot_wallet_addr");
+    // Check if user previously connected on this device (clean malformed storage)
+    let savedAddr = localStorage.getItem("parapilot_wallet_addr");
     const savedMethod = localStorage.getItem("parapilot_wallet_method") as any;
+
+    if (savedAddr && (savedAddr === "null" || savedAddr === "undefined" || !savedAddr.startsWith("0x"))) {
+      localStorage.removeItem("parapilot_wallet_addr");
+      savedAddr = null;
+    }
 
     if (savedAddr) {
       setConnectedAddress(savedAddr);
@@ -417,7 +438,7 @@ export default function Home() {
       if (p?.request) {
         p.request({ method: "eth_accounts" })
           .then((accounts: string[]) => {
-            if (accounts && accounts.length > 0) {
+            if (accounts && accounts.length > 0 && typeof accounts[0] === "string" && accounts[0].startsWith("0x")) {
               const addr = accounts[0];
               let agentKey = localStorage.getItem(`parapilot_agent_key_${addr}`);
               if (!agentKey) {
@@ -439,7 +460,7 @@ export default function Home() {
     }
 
     const handleAccounts = (accounts: string[]) => {
-      if (accounts && accounts.length > 0) {
+      if (accounts && accounts.length > 0 && typeof accounts[0] === "string" && accounts[0].startsWith("0x")) {
         const addr = accounts[0];
         let agentKey = localStorage.getItem(`parapilot_agent_key_${addr}`);
         if (!agentKey) {
@@ -461,13 +482,15 @@ export default function Home() {
 
     const w = window as any;
     if (w.ethereum?.on) w.ethereum.on("accountsChanged", handleAccounts);
-    if (w.okxwallet?.on) w.okxwallet.on("accountsChanged", handleAccounts);
+    if (w.okxwallet?.on && w.okxwallet !== w.ethereum) w.okxwallet.on("accountsChanged", handleAccounts);
 
     return () => {
       clearTimeout(timer);
-      window.removeEventListener("eip6963:announceProvider", onAnnounceProvider);
-      if (w.ethereum?.removeListener) w.ethereum.removeListener("accountsChanged", handleAccounts);
-      if (w.okxwallet?.removeListener) w.okxwallet.removeListener("accountsChanged", handleAccounts);
+      try {
+        window.removeEventListener("eip6963:announceProvider", onAnnounceProvider);
+        if (w.ethereum?.removeListener) w.ethereum.removeListener("accountsChanged", handleAccounts);
+        if (w.okxwallet?.removeListener && w.okxwallet !== w.ethereum) w.okxwallet.removeListener("accountsChanged", handleAccounts);
+      } catch (e) {}
     };
   }, []);
 
@@ -1014,7 +1037,7 @@ export default function Home() {
             </button>
 
             {/* Backup Wallet Button in Navbar (Hidden for Demo Account) */}
-            {connectedAddress && connectionMethod !== "demo" && connectedAddress.toLowerCase() !== "0x6e95951bbac8454950508394ec0f5fccf6c4d8bf" && (
+            {Boolean(connectedAddress && connectionMethod !== "demo" && typeof connectedAddress === "string" && connectedAddress.toLowerCase() !== "0x6e95951bbac8454950508394ec0f5fccf6c4d8bf") && (
               <button
                 onClick={() => setShowBackupModal(true)}
                 className="hidden sm:flex items-center space-x-1.5 px-3 py-1.5 rounded-xl bg-purple-950/40 border border-purple-800/60 hover:border-monad-cyan text-xs font-mono text-purple-200 hover:text-white transition shadow-sm cursor-pointer"
@@ -1471,8 +1494,8 @@ export default function Home() {
                       <span>
                         Balance: {(() => {
                           if (sourceToken === "MON") return Number(walletBalance) || 0;
-                          const found = portfolioTokens.find((t) => t.symbol?.toUpperCase() === sourceToken);
-                          return found ? found.quantity : 0;
+                          const found = (portfolioTokens || []).find((t) => t?.symbol?.toUpperCase() === sourceToken);
+                          return Number(found?.quantity) || 0;
                         })().toLocaleString(undefined, { maximumFractionDigits: 4 })} {sourceToken}
                       </span>
                       <button
@@ -1481,8 +1504,8 @@ export default function Home() {
                           let bal = 0;
                           if (sourceToken === "MON") bal = Number(walletBalance) || 0;
                           else {
-                            const found = portfolioTokens.find((t) => t.symbol?.toUpperCase() === sourceToken);
-                            bal = found ? found.quantity : 0;
+                            const found = (portfolioTokens || []).find((t) => t?.symbol?.toUpperCase() === sourceToken);
+                            bal = Number(found?.quantity) || 0;
                           }
                           if (bal > 0) setSwapAmount(bal.toString());
                         }}
@@ -1554,8 +1577,8 @@ export default function Home() {
                     <span>
                       Balance: {(() => {
                         if (targetToken === "MON") return Number(walletBalance) || 0;
-                        const found = portfolioTokens.find((t) => t.symbol?.toUpperCase() === targetToken);
-                        return found ? found.quantity : 0;
+                        const found = (portfolioTokens || []).find((t) => t?.symbol?.toUpperCase() === targetToken);
+                        return Number(found?.quantity) || 0;
                       })().toLocaleString(undefined, { maximumFractionDigits: 4 })} {targetToken}
                     </span>
                   </div>
@@ -1788,7 +1811,7 @@ export default function Home() {
 
                 <div className="space-y-2">
                   {/* Backup Wallet Button (Hidden for Demo Account) */}
-                  {connectionMethod !== "demo" && connectedAddress?.toLowerCase() !== "0x6e95951bbac8454950508394ec0f5fccf6c4d8bf" && (
+                  {Boolean(connectionMethod !== "demo" && connectedAddress && typeof connectedAddress === "string" && connectedAddress.toLowerCase() !== "0x6e95951bbac8454950508394ec0f5fccf6c4d8bf") && (
                     <button
                       onClick={() => {
                         setShowWalletModal(false);
@@ -2070,7 +2093,7 @@ export default function Home() {
               <div className="bg-slate-900/60 border border-slate-800 p-3 rounded-xl">
                 <span className="text-slate-400 text-[11px] font-mono block">Total Value</span>
                 <span className="text-lg font-bold font-mono text-emerald-400">
-                  ${portfolioTotalUsd.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USD
+                  ${(Number(portfolioTotalUsd) || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USD
                 </span>
               </div>
               <div className="bg-slate-900/60 border border-slate-800 p-3 rounded-xl">
