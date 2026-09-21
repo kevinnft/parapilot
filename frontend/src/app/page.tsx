@@ -611,7 +611,7 @@ export default function Home() {
     fetchMonadBalance(demoAddr);
     fetchWalletTokens(demoAddr);
     ensurePasskeyRecoveryKey("demo", demoAddr);
-    addLog("POLICY", "success", `Loaded Demo Fleet Wallet: ${demoAddr.slice(0, 6)}...${demoAddr.slice(-4)} (Funded 4.61 MON)`);
+    addLog("POLICY", "success", `Loaded Demo Fleet Wallet: ${demoAddr.slice(0, 6)}...${demoAddr.slice(-4)} (balance shown live in header)`);
     addLog("VALIDATOR", "success", `Live Monad Session Key Active: ${demoAgentKey.slice(0, 6)}...${demoAgentKey.slice(-4)} (Tx: 0x1d7455...)`);
     setShowWalletModal(false);
   };

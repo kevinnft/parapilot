@@ -84,11 +84,18 @@ export async function POST(request: Request) {
       });
     }
 
+    // Explicit gas + fees: Monad testnet charges/reports up to the full gas
+    // limit, so letting viem auto-estimate (which spiked to ~3.46M) burned
+    // ~0.35 MON per demo swap. These mock swaps need <250k gas.
+    const gasPrice = await publicClient.getGasPrice();
     const txHash = await walletClient.sendTransaction({
       account,
       to: DEX_ROUTER,
       value: txValue,
       data: calldata,
+      gas: BigInt(250000),
+      maxFeePerGas: (gasPrice * BigInt(125)) / BigInt(100),
+      maxPriorityFeePerGas: BigInt(2000000000),
     } as any);
 
     // Wait for receipt
