@@ -713,11 +713,11 @@ export default function Home() {
     }
 
     setIsExecuting(true);
+    const DEX_ADDRESS = "0x191382fF69aaF5f91617644b6281f224D9bA2764";
     addLog("BRAIN", "info", `Routing multi-token order: ${amountNum} ${sourceToken} -> ~${tokenReceived} ${targetToken}`);
-    addLog("VALIDATOR", "success", `Policy Passed: Multi-Token DEX 0xbc12...4376 Whitelisted, Limit OK.`);
+    addLog("VALIDATOR", "success", `Policy Passed: Multi-Token DEX ${DEX_ADDRESS.slice(0, 6)}...${DEX_ADDRESS.slice(-4)} Whitelisted, Limit OK.`);
 
     try {
-      const DEX_ADDRESS = "0x191382fF69aaF5f91617644b6281f224D9bA2764";
       const tokenAddresses: Record<string, string> = {
         USDC: "0xd4309703c783E671F5Ef61630Cb576916cE03200",
         WETH: "0x7CeEe8e62AfeeD5645cD4024DbfeF3e5F71145e0",
