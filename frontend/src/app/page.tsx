@@ -206,8 +206,10 @@ export default function Home() {
       if (!res.ok) return;
       const p = await res.json();
       if (p.capMon > 0) {
-        setDailyLimit(+(p.capMon * 3).toFixed(2));
-        setSpentToday(+(p.spentMon * 3).toFixed(2));
+        // The on-chain cap is one number for every token, counted in token
+        // units rather than dollars. Showing it in MON keeps the two equal.
+        setDailyLimit(+p.capMon.toFixed(4));
+        setSpentToday(+p.spentMon.toFixed(4));
         setIsUnlimitedLimit(false);
       }
       setIsSessionActive(Boolean(p.active));
@@ -1205,8 +1207,8 @@ export default function Home() {
                 <span className="text-monad-cyan">∞ Unlimited</span>
               ) : (
                 <>
-                  ${spentToday.toFixed(2)}{" "}
-                  <span className="text-[10px] sm:text-xs font-normal text-slate-400">/ ${dailyLimit}</span>
+                  {spentToday.toFixed(4)}{" "}
+                  <span className="text-[10px] sm:text-xs font-normal text-slate-400">/ {dailyLimit} MON</span>
                 </>
               )}
             </div>

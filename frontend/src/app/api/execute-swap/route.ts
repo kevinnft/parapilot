@@ -37,6 +37,20 @@ const POLICY_REVERTS: Record<string, string> = {
   "b7150de5": "NotAccount",
 };
 
+async function tokenBalance(token: `0x${string}` | null, holder: string): Promise<bigint> {
+  const body = token
+    ? { method: "eth_call", params: [{ to: token, data: "0x70a08231" + holder.slice(2).toLowerCase().padStart(64, "0") }, "latest"] }
+    : { method: "eth_getBalance", params: [holder, "latest"] };
+  const res = await fetch("https://testnet-rpc.monad.xyz", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ jsonrpc: "2.0", id: 1, ...body }),
+    cache: "no-store",
+  });
+  const json = await res.json();
+  return BigInt(json.result || "0x0");
+}
+
 export async function POST(request: Request) {
   try {
     const body = await request.json();
@@ -59,6 +73,16 @@ export async function POST(request: Request) {
     const amountInUnits = sourceToken === "MON"
       ? parseEther(amount.toFixed(4))
       : BigInt(Math.floor(amount * 10 ** inConfig.decimals));
+
+    // The swap spends the account's balance, not the connected wallet's.
+    const held = await tokenBalance(sourceToken === "MON" ? null : inConfig.address, ACCOUNT);
+    if (held < amountInUnits) {
+      const human = Number(held) / 10 ** inConfig.decimals;
+      return NextResponse.json(
+        { success: false, error: `ParaPilotAccount holds ${human} ${sourceToken}, but this swap spends ${amount}. Send ${sourceToken} to ${ACCOUNT} first.` },
+        { status: 400 }
+      );
+    }
 
     // The session key signs, but the account holds the funds and the validator
     // checks router, method, token and the 24h cap before anything moves.
