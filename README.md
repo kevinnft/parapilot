@@ -66,6 +66,7 @@ All contracts are deployed and verified live on **Monad Testnet (Chain ID: 10143
 | :--- | :--- | :--- |
 | **SessionKeyValidator (v2)** | `0x847F5D03c3aFC47DcBCd041D0F02D52EFb242991` | [View Contract](https://testnet.monadexplorer.com/address/0x847F5D03c3aFC47DcBCd041D0F02D52EFb242991) |
 | **ParaPilotAccount (v2)** | `0xB56586E881a2F0f70A0c221ace4Efe7bD68C2EF7` | [View Contract](https://testnet.monadexplorer.com/address/0xB56586E881a2F0f70A0c221ace4Efe7bD68C2EF7) |
+| **PasskeyAccount (WebAuthn P-256)** | `0x882CfcBC9Fb35F8f0676ff8d72FA9294DcF64799` | [View Contract](https://testnet.monadexplorer.com/address/0x882CfcBC9Fb35F8f0676ff8d72FA9294DcF64799) |
 | **MockDEX Router (Multi-Token)** | `0x191382fF69aaF5f91617644b6281f224D9bA2764` | [View Contract](https://testnet.monadexplorer.com/address/0x191382fF69aaF5f91617644b6281f224D9bA2764) |
 | **USD Coin (USDC, 6 decimals)** | `0xd4309703c783E671F5Ef61630Cb576916cE03200` | [View Token](https://testnet.monadexplorer.com/address/0xd4309703c783E671F5Ef61630Cb576916cE03200) |
 | **Wrapped Ether (WETH, 18 decimals)** | `0x7CeEe8e62AfeeD5645cD4024DbfeF3e5F71145e0` | [View Token](https://testnet.monadexplorer.com/address/0x7CeEe8e62AfeeD5645cD4024DbfeF3e5F71145e0) |
@@ -92,7 +93,7 @@ parapilot/
 │   │   ├── SessionKeyValidator.sol   # Core policy validation engine
 │   │   ├── ParaPilotAccount.sol      # Policy-guarded smart account
 │   │   └── mocks/                    # Mock DEX router & ERC20 tokens
-│   ├── test/                         # Comprehensive automated tests (10 passing)
+│   ├── test/                         # Comprehensive automated tests (13 passing)
 │   └── scripts/deploy.js             # Deployment script for Monad Devnet
 ├── agent/                 # Autonomous AI Agent Daemon (Python)
 │   ├── main.py            # End-to-end agent decision and execution loop
@@ -118,7 +119,7 @@ cd contracts
 npm install
 npx hardhat test
 ```
-*Output: 10/10 automated tests passing, verifying spend limits, contract whitelisting, method gating, interval reset, and emergency kill-switch.*
+*Output: 13/13 automated tests passing, verifying passkey WebAuthn P-256 assertions, spend limits, contract whitelisting, method gating, token gating, interval reset, and emergency kill-switch.*
 
 ### 2. Run Autonomous Agent Daemon
 ```bash

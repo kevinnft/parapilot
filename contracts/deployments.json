@@ -15,6 +15,11 @@
       "explorer": "https://testnet.monadexplorer.com/address/0xB56586E881a2F0f70A0c221ace4Efe7bD68C2EF7",
       "note": "v2: executeSwapViaSessionKey counts every token toward the 24h cap"
     },
+    "PasskeyAccount": {
+      "address": "0x882CfcBC9Fb35F8f0676ff8d72FA9294DcF64799",
+      "explorer": "https://testnet.monadexplorer.com/address/0x882CfcBC9Fb35F8f0676ff8d72FA9294DcF64799",
+      "note": "WebAuthn P-256 on-chain verification with RIP-7212 fallback"
+    },
     "MockDEX": {
       "address": "0x191382fF69aaF5f91617644b6281f224D9bA2764",
       "explorer": "https://testnet.monadexplorer.com/address/0x191382fF69aaF5f91617644b6281f224D9bA2764"
