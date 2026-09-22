@@ -12,10 +12,16 @@ async function main() {
   const balance = await ethers.provider.getBalance(deployer.address);
   console.log("Deployer Balance:", ethers.formatEther(balance), "MON");
 
+  const fee = await ethers.provider.getFeeData();
+  const maxFeePerGas = ((fee.gasPrice ?? 100_000_000_000n) * 125n) / 100n;
+  const maxPriorityFeePerGas = 2_000_000_000n;
+  // Monad testnet charges the full gas limit, so every cap is explicit.
+  const gas = { deploy: 900_000n, fund: 25_000n };
+
   // 1. Deploy SessionKeyValidator
   console.log("\n[1] Deploying SessionKeyValidator...");
   const Validator = await ethers.getContractFactory("SessionKeyValidator");
-  const validator = await Validator.deploy();
+  const validator = await Validator.deploy({ gasLimit: gas.deploy, maxFeePerGas, maxPriorityFeePerGas });
   await validator.waitForDeployment();
   const validatorAddress = await validator.getAddress();
   const txValHash = validator.deploymentTransaction() ? validator.deploymentTransaction().hash : "N/A";
@@ -25,7 +31,11 @@ async function main() {
   // 2. Deploy sample ParaPilotAccount
   console.log("\n[2] Deploying ParaPilotAccount (Smart Account)...");
   const Account = await ethers.getContractFactory("ParaPilotAccount");
-  const account = await Account.deploy(deployer.address, validatorAddress);
+  const account = await Account.deploy(deployer.address, validatorAddress, {
+    gasLimit: gas.deploy,
+    maxFeePerGas,
+    maxPriorityFeePerGas,
+  });
   await account.waitForDeployment();
   const accountAddress = await account.getAddress();
   const txAccHash = account.deploymentTransaction() ? account.deploymentTransaction().hash : "N/A";
@@ -37,6 +47,9 @@ async function main() {
   const fundTx = await deployer.sendTransaction({
     to: accountAddress,
     value: ethers.parseEther("0.1"),
+    gasLimit: gas.fund,
+    maxFeePerGas,
+    maxPriorityFeePerGas,
   });
   await fundTx.wait();
   console.log("✅ Account Funded! Tx Hash:", fundTx.hash);

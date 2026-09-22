@@ -64,8 +64,8 @@ All contracts are deployed and verified live on **Monad Testnet (Chain ID: 10143
 
 | Component | Monad Testnet Contract Address | Explorer Link |
 | :--- | :--- | :--- |
-| **SessionKeyValidator** | `0x01022d952087B7FBacc8DA53478B0F555Fe457C4` | [View Contract](https://testnet.monadexplorer.com/address/0x01022d952087B7FBacc8DA53478B0F555Fe457C4) |
-| **ParaPilotAccount** | `0x8A55d40977C49D4Ac5C569ebA4631D4e9026C592` | [View Contract](https://testnet.monadexplorer.com/address/0x8A55d40977C49D4Ac5C569ebA4631D4e9026C592) |
+| **SessionKeyValidator (v2)** | `0x847F5D03c3aFC47DcBCd041D0F02D52EFb242991` | [View Contract](https://testnet.monadexplorer.com/address/0x847F5D03c3aFC47DcBCd041D0F02D52EFb242991) |
+| **ParaPilotAccount (v2)** | `0xB56586E881a2F0f70A0c221ace4Efe7bD68C2EF7` | [View Contract](https://testnet.monadexplorer.com/address/0xB56586E881a2F0f70A0c221ace4Efe7bD68C2EF7) |
 | **MockDEX Router (Multi-Token)** | `0x191382fF69aaF5f91617644b6281f224D9bA2764` | [View Contract](https://testnet.monadexplorer.com/address/0x191382fF69aaF5f91617644b6281f224D9bA2764) |
 | **USD Coin (USDC, 6 decimals)** | `0xd4309703c783E671F5Ef61630Cb576916cE03200` | [View Token](https://testnet.monadexplorer.com/address/0xd4309703c783E671F5Ef61630Cb576916cE03200) |
 | **Wrapped Ether (WETH, 18 decimals)** | `0x7CeEe8e62AfeeD5645cD4024DbfeF3e5F71145e0` | [View Token](https://testnet.monadexplorer.com/address/0x7CeEe8e62AfeeD5645cD4024DbfeF3e5F71145e0) |

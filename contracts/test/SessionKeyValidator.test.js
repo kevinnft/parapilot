@@ -123,6 +123,13 @@ describe("ParaPilot: Policy Engine & Session Key Guardrails", function () {
         swapSelector,
         true
       );
+
+      // Native MON is the token this suite spends
+      await validator.connect(owner).setWhitelistedToken(
+        agent.address,
+        ethers.ZeroAddress,
+        true
+      );
     });
 
     it("Should allow agent to execute a valid swap within spending limit", async function () {
@@ -263,6 +270,61 @@ describe("ParaPilot: Policy Engine & Session Key Guardrails", function () {
       const balanceAfter = await ethers.provider.getBalance(other.address);
 
       expect(balanceAfter - balanceBefore).to.equal(directAmount);
+    });
+
+    it("Rejects a stranger burning the owner's spend quota directly", async function () {
+      const now = await time.latest();
+      await validator.connect(owner).registerSessionKey(agent.address, now, now + 7 * ONE_DAY, MAX_SPEND, ONE_DAY);
+      await validator.connect(owner).setWhitelistedContract(agent.address, await mockDEX.getAddress(), true);
+      const sel = mockDEX.interface.getFunction("swapExactETHForTokens").selector;
+      await validator.connect(owner).setWhitelistedMethod(agent.address, await mockDEX.getAddress(), sel, true);
+      await validator.connect(owner).setWhitelistedToken(agent.address, ethers.ZeroAddress, true);
+
+      await expect(
+        validator.connect(attacker).validateExecution(
+          owner.address, agent.address, await mockDEX.getAddress(), sel, ethers.parseEther("1.0"), ethers.ZeroAddress
+        )
+      ).to.be.revertedWithCustomError(validator, "NotAccount");
+
+      const policy = await validator.sessionPolicies(owner.address, agent.address);
+      expect(policy.currentIntervalSpent).to.equal(0);
+    });
+
+    it("Counts an ERC-20 spend against the same 18-decimal cap and blocks a token that was not whitelisted", async function () {
+      const now = await time.latest();
+      await validator.connect(owner).registerSessionKey(agent.address, now, now + 7 * ONE_DAY, ethers.parseEther("5"), ONE_DAY);
+      await validator.connect(owner).setWhitelistedContract(agent.address, await mockDEX.getAddress(), true);
+      const sel = mockDEX.interface.getFunction("swapExactTokensForETH").selector;
+      await validator.connect(owner).setWhitelistedMethod(agent.address, await mockDEX.getAddress(), sel, true);
+
+      // Fund the pool and the account, but do NOT whitelist USDC yet.
+      await owner.sendTransaction({ to: await mockDEX.getAddress(), value: ethers.parseEther("5") });
+      await mockUSDC.mint(await account.getAddress(), ethers.parseUnits("3", 6));
+
+      await expect(
+        account.connect(agent).executeSwapViaSessionKey(
+          await mockDEX.getAddress(), await mockUSDC.getAddress(), ethers.ZeroAddress,
+          ethers.parseUnits("1", 6), 0
+        )
+      ).to.be.revertedWithCustomError(validator, "TokenNotWhitelisted");
+
+      await validator.connect(owner).setWhitelistedToken(agent.address, await mockUSDC.getAddress(), true);
+
+      // 1 USDC (6 decimals) must count as 1e18, not 1e6.
+      await account.connect(agent).executeSwapViaSessionKey(
+        await mockDEX.getAddress(), await mockUSDC.getAddress(), ethers.ZeroAddress,
+        ethers.parseUnits("1", 6), 0
+      );
+      let policy = await validator.sessionPolicies(owner.address, agent.address);
+      expect(policy.currentIntervalSpent).to.equal(ethers.parseEther("1"));
+
+      // 4 more would be exactly the cap; 4.1 crosses it.
+      await expect(
+        account.connect(agent).executeSwapViaSessionKey(
+          await mockDEX.getAddress(), await mockUSDC.getAddress(), ethers.ZeroAddress,
+          ethers.parseUnits("4.1", 6), 0
+        )
+      ).to.be.revertedWithCustomError(validator, "SpendLimitExceeded");
     });
   });
 });

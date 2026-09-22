@@ -9,6 +9,14 @@ from zerion_client import ZerionClient
 from brain import AgentBrain
 from executor import MonadExecutor
 
+DEX = "0x191382fF69aaF5f91617644b6281f224D9bA2764"
+TOKENS = {
+    "MON": "0x" + "0" * 40,
+    "USDC": "0xd4309703c783E671F5Ef61630Cb576916cE03200",
+    "WETH": "0x7CeEe8e62AfeeD5645cD4024DbfeF3e5F71145e0",
+    "KURU": "0x15c2cEf5c93AD6cc6158812C2e128579727Dd4ba",
+}
+
 def run_agent():
     print("=" * 60)
     print("ParaPilot Autonomous Agent Loop Starting...")
@@ -42,9 +50,17 @@ def run_agent():
 
     # 3. If action requires on-chain settlement, dispatch via session key
     if decision.get("action") == "SWAP":
-        print("\n[3] Dispatching execution to Monad RPC under session key guardrails...")
-        # (Calldata encoding & validator call)
-        print("    Validating on-chain spend limits with SessionKeyValidator.sol...")
+        print("\n[3] Dispatching policy-gated swap to ParaPilotAccount...")
+        token_in = decision.get("token_in", "MON")
+        token_out = decision.get("token_out", "USDC")
+        amount = float(decision.get("amount_in") or 0)
+        if amount <= 0:
+            print("    Brain returned a swap with no amount. Nothing sent.")
+        else:
+            decimals = {"MON": 18, "USDC": 6, "WETH": 18, "KURU": 18}
+            amount_units = int(amount * 10 ** decimals.get(token_in, 18))
+            result = executor.execute_swap(DEX, TOKENS[token_in], TOKENS[token_out], amount_units)
+            print(f"    Result: {result['status']} {result.get('tx_hash') or result.get('error')}")
     else:
         print("\n[3] No execution needed. Maintaining position.")
 

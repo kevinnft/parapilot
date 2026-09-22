@@ -109,8 +109,8 @@ export default function Home() {
   });
   const [whitelistedContracts, setWhitelistedContracts] = useState<Record<string, { address: string; active: boolean }>>({
     "MockDEX Router (Multi-Token)": { address: "0x191382fF69aaF5f91617644b6281f224D9bA2764", active: true },
-    "ParaPilotAccount": { address: "0x8A55d40977C49D4Ac5C569ebA4631D4e9026C592", active: true },
-    "SessionKeyValidator": { address: "0x01022d952087B7FBacc8DA53478B0F555Fe457C4", active: true },
+    "ParaPilotAccount": { address: "0xB56586E881a2F0f70A0c221ace4Efe7bD68C2EF7", active: true },
+    "SessionKeyValidator": { address: "0x847F5D03c3aFC47DcBCd041D0F02D52EFb242991", active: true },
     "USDC Contract": { address: "0xd4309703c783E671F5Ef61630Cb576916cE03200", active: true },
   });
 
@@ -147,7 +147,7 @@ export default function Home() {
       timestamp: "12:00:01",
       source: "VALIDATOR",
       type: "info",
-      message: "SessionKeyValidator contract verified on-chain at 0x01022d952087B7FBacc8DA53478B0F555Fe457C4.",
+      message: "SessionKeyValidator v2 verified on-chain at 0x847F5D03c3aFC47DcBCd041D0F02D52EFb242991.",
     },
     {
       id: "3",
@@ -277,7 +277,7 @@ export default function Home() {
       authMethod: connectionMethod || "passkey",
       smartAccountAddress: connectedAddress,
       sessionKeyDelegated: activeSessionKey || "0x4612501ad4F82475f3F94458c2cc4257267dD0cc",
-      validatorAddress: "0x01022d952087B7FBacc8DA53478B0F555Fe457C4",
+      validatorAddress: "0x847F5D03c3aFC47DcBCd041D0F02D52EFb242991",
       emergencyRecoveryKey: {
         mnemonicPhrase: mnemonic || passkeyMnemonic || "(Imported directly from Private Key)",
         privateKeyHex: privateKey || passkeyPrivateKey,
@@ -714,6 +714,14 @@ export default function Home() {
 
     setIsExecuting(true);
     const DEX_ADDRESS = "0x191382fF69aaF5f91617644b6281f224D9bA2764";
+    // Monad testnet bills the full gas limit. Pin every wallet tx so MetaMask/OKX
+    // cannot inflate the estimate (observed ~3.46M, ~0.35 MON burned per swap).
+    const MONAD_GAS = {
+      approve: "0x186A0", // 100000
+      swap: "0x3D090", // 250000
+      maxFeePerGas: "0x1AD2748000", // 115 gwei
+      maxPriorityFeePerGas: "0x77359400", // 2 gwei
+    };
     addLog("BRAIN", "info", `Routing multi-token order: ${amountNum} ${sourceToken} -> ~${tokenReceived} ${targetToken}`);
     addLog("VALIDATOR", "success", `Policy Passed: Multi-Token DEX ${DEX_ADDRESS.slice(0, 6)}...${DEX_ADDRESS.slice(-4)} Whitelisted, Limit OK.`);
 
@@ -761,6 +769,9 @@ export default function Home() {
                   to: srcAddr,
                   value: "0x0",
                   data: approveCalldata,
+                  gas: MONAD_GAS.approve,
+                  maxFeePerGas: MONAD_GAS.maxFeePerGas,
+                  maxPriorityFeePerGas: MONAD_GAS.maxPriorityFeePerGas,
                 },
               ],
             });
@@ -800,6 +811,9 @@ export default function Home() {
               to: DEX_ADDRESS,
               value: weiVal,
               data: calldata,
+              gas: MONAD_GAS.swap,
+              maxFeePerGas: MONAD_GAS.maxFeePerGas,
+              maxPriorityFeePerGas: MONAD_GAS.maxPriorityFeePerGas,
             },
           ],
         });
@@ -900,7 +914,7 @@ export default function Home() {
 
     if (isSessionActive) {
       setIsSessionActive(false);
-      addLog("KILL_SWITCH", "error", `🚨 EMERGENCY KILL-SWITCH TRIGGERED by Owner! Session key ${keyDisplay} revoked instantly on-chain.`);
+      addLog("KILL_SWITCH", "error", `Kill switch armed locally for ${keyDisplay}. This demo session is not the on-chain key; the live cap is enforced at 0x847F...2991.`);
       setExecutionToast({
         type: "kill",
         title: "🚨 Emergency Kill-Switch Activated!",
@@ -908,7 +922,7 @@ export default function Home() {
       });
     } else {
       setIsSessionActive(true);
-      addLog("KILL_SWITCH", "success", `Session key ${keyDisplay} re-authorized and armed with fresh policy on-chain.`);
+      addLog("KILL_SWITCH", "success", `Local session ${keyDisplay} re-armed. On-chain revocation needs the owner key.`);
       setExecutionToast({
         type: "success",
         title: "✅ Session Key Re-Armed",
@@ -920,13 +934,13 @@ export default function Home() {
   // Save Policy to Monad
   const handleSavePolicy = () => {
     setIsSavingPolicy(true);
-    addLog("POLICY", "info", "Signing policy update with WebAuthn Passkey...");
+    addLog("POLICY", "info", "Saving the policy locally. The on-chain cap and whitelist are set by the owner key.");
     setTimeout(() => {
       setIsSavingPolicy(false);
       setHasUnsavedChanges(false);
       const limitStr = isUnlimitedLimit ? "Unlimited (Tanpa Batas)" : `$${dailyLimit}/24h`;
-      addLog("VALIDATOR", "success", `✅ On-chain Policy Updated! New limit: ${limitStr} | Routers: ${Object.keys(whitelistedContracts).length} | Active Tokens: ${Object.keys(allowedTokens).filter(k => allowedTokens[k as keyof typeof allowedTokens]).join(", ")}`);
-      addLog("MONAD_EVM", "success", "Validator state committed to Monad Parallel EVM.");
+      addLog("VALIDATOR", "success", `Local policy saved: ${limitStr} | Routers: ${Object.keys(whitelistedContracts).length}.`);
+      addLog("MONAD_EVM", "info", "On-chain enforcement is live at the v2 validator, independent of this panel.");
       setExecutionToast({
         type: "info",
         title: "Policy Deployed to Monad!",
@@ -984,7 +998,7 @@ export default function Home() {
   };
 
   const copyContractAddress = () => {
-    navigator.clipboard.writeText("0x01022d952087B7FBacc8DA53478B0F555Fe457C4");
+    navigator.clipboard.writeText("0x847F5D03c3aFC47DcBCd041D0F02D52EFb242991");
     setCopiedContract(true);
     setTimeout(() => setCopiedContract(false), 2000);
   };
@@ -2015,7 +2029,7 @@ export default function Home() {
             </div>
             <div className="space-y-3 text-xs">
               <div className="flex justify-between items-center bg-slate-900/80 p-2.5 rounded-xl font-mono text-[11px]">
-                <span className="text-slate-300">0x01022d952087B7FBacc8DA53478B0F555Fe457C4</span>
+                <span className="text-slate-300">0x847F5D03c3aFC47DcBCd041D0F02D52EFb242991</span>
                 <button onClick={copyContractAddress} className="text-monad-cyan hover:text-white flex items-center space-x-1">
                   {copiedContract ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
                   <span>{copiedContract ? "Copied" : "Copy"}</span>
@@ -2025,8 +2039,10 @@ export default function Home() {
                 <p className="font-semibold text-slate-200">Core Security Methods:</p>
                 <ul className="list-disc list-inside space-y-1 text-slate-400 font-mono text-[11px]">
                   <li><code>registerSessionKey(key, start, end, maxSpend, interval)</code></li>
-                  <li><code>validateExecution(owner, key, target, selector, spend)</code></li>
+                  <li><code>validateExecution(owner, key, target, selector, spend, token)</code></li>
+                  <li><code>executeSwapViaSessionKey(router, tokenIn, tokenOut, amountIn, minOut)</code></li>
                   <li><code>revokeSessionKey(key)</code> (Emergency Kill-Switch)</li>
+                  <li><code>setWhitelistedToken(key, token, allowed)</code></li>
                   <li><code>setWhitelistedContract(key, target, allowed)</code></li>
                 </ul>
               </div>

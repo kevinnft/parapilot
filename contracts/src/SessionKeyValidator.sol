@@ -26,14 +26,19 @@ contract SessionKeyValidator {
     // walletOwner => sessionKey => targetContract => functionSelector => isAllowed
     mapping(address => mapping(address => mapping(address => mapping(bytes4 => bool)))) public whitelistedMethods;
 
-    // walletOwner => sessionKey => token => isAllowed
+    // walletOwner => sessionKey => token => isAllowed (address(0) = native MON)
     mapping(address => mapping(address => mapping(address => bool))) public whitelistedTokens;
+
+    // The one ParaPilotAccount allowed to call validateExecution for an owner.
+    mapping(address => address) public accountOf;
 
     // Events
     event SessionKeyRegistered(address indexed owner, address indexed sessionKey, uint256 validUntil, uint256 maxSpend);
     event SessionKeyRevoked(address indexed owner, address indexed sessionKey);
     event ContractWhitelisted(address indexed owner, address indexed sessionKey, address indexed target, bool allowed);
     event MethodWhitelisted(address indexed owner, address indexed sessionKey, address indexed target, bytes4 selector, bool allowed);
+    event TokenWhitelisted(address indexed owner, address indexed sessionKey, address indexed token, bool allowed);
+    event AccountBound(address indexed owner, address indexed account);
     event ExecutionValidated(address indexed owner, address indexed sessionKey, address indexed target, uint256 spendAmount);
 
     // Errors
@@ -42,8 +47,10 @@ contract SessionKeyValidator {
     error SessionNotYetValid();
     error ContractNotWhitelisted();
     error MethodNotWhitelisted();
+    error TokenNotWhitelisted();
     error SpendLimitExceeded();
     error Unauthorized();
+    error NotAccount();
 
     /**
      * @notice Registers or updates a session key for an AI agent with specified guardrails.
@@ -72,6 +79,17 @@ contract SessionKeyValidator {
     }
 
     /**
+     * @notice Binds the owner's ParaPilotAccount. The first bind is open; every later
+     *         bind must come from the account already bound, so nobody else can hijack it.
+     */
+    function bindAccount(address owner) external {
+        address current = accountOf[owner];
+        if (current != address(0) && msg.sender != current) revert NotAccount();
+        accountOf[owner] = msg.sender;
+        emit AccountBound(owner, msg.sender);
+    }
+
+    /**
      * @notice Emergency kill-switch: revokes an active session key instantly.
      */
     function revokeSessionKey(address sessionKey) external {
@@ -96,33 +114,45 @@ contract SessionKeyValidator {
     }
 
     /**
+     * @notice Whitelists or blacklists a token the session key may spend.
+     * @dev address(0) stands for native MON.
+     */
+    function setWhitelistedToken(address sessionKey, address token, bool allowed) external {
+        whitelistedTokens[msg.sender][sessionKey][token] = allowed;
+        emit TokenWhitelisted(msg.sender, sessionKey, token, allowed);
+    }
+
+    /**
      * @notice Validates whether an agent's execution complies with the owner's policy.
+     * @dev Only the owner's ParaPilotAccount may call this: it writes the spend counter,
+     *      so a public caller could otherwise burn someone else's quota.
      * @param owner The wallet owner who delegated the authority.
      * @param sessionKey The address of the agent's session key.
      * @param target The target contract being called.
      * @param selector The 4-byte function selector of the call.
-     * @param spendAmount The amount of native or designated token being spent.
+     * @param spendAmount Amount spent, already scaled to 18 decimals by the account.
+     * @param tokenSpent The token leaving the account. address(0) is native MON.
      */
     function validateExecution(
         address owner,
         address sessionKey,
         address target,
         bytes4 selector,
-        uint256 spendAmount
+        uint256 spendAmount,
+        address tokenSpent
     ) external returns (bool) {
+        if (msg.sender != accountOf[owner]) revert NotAccount();
         SessionPolicy storage policy = sessionPolicies[owner][sessionKey];
 
         if (!policy.isActive) revert SessionNotActive();
         if (block.timestamp < policy.validAfter) revert SessionNotYetValid();
         if (block.timestamp > policy.validUntil) revert SessionExpired();
 
-        // Validate whitelisted contract
         if (!whitelistedContracts[owner][sessionKey][target]) revert ContractNotWhitelisted();
-
-        // Validate whitelisted selector if method gating is configured
         if (!whitelistedMethods[owner][sessionKey][target][selector]) revert MethodNotWhitelisted();
+        if (!whitelistedTokens[owner][sessionKey][tokenSpent]) revert TokenNotWhitelisted();
 
-        // Validate and update spending interval
+        // maxSpendPerInterval == 0 means the owner set no cap.
         if (policy.maxSpendPerInterval > 0 && spendAmount > 0) {
             if (block.timestamp >= policy.currentIntervalStart + policy.intervalDuration) {
                 policy.currentIntervalStart = block.timestamp;

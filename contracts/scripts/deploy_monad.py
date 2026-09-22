@@ -89,7 +89,7 @@ def main():
     print(f"Gas Price:               {gas_price / 1e9:.2f} Gwei (MaxFee: {max_fee / 1e9:.2f} Gwei)")
 
     # 2. Check or Deploy SessionKeyValidator
-    val_addr = "0x01022d952087B7FBacc8DA53478B0F555Fe457C4"
+    val_addr = "0x847F5D03c3aFC47DcBCd041D0F02D52EFb242991"
     if wait_for_code(val_addr, 2):
         print(f"\n[1] ✅ SessionKeyValidator already deployed at: {val_addr}")
     else:
@@ -115,7 +115,7 @@ def main():
     tx_acc = {
         "chainId": CHAIN_ID,
         "nonce": nonce,
-        "gas": 1_200_000,
+        "gas": 900_000,
         "maxFeePerGas": max_fee,
         "maxPriorityFeePerGas": priority_fee,
         "value": 0,
@@ -175,7 +175,7 @@ def main():
         "chainId": CHAIN_ID,
         "nonce": nonce,
         "to": val_addr,
-        "gas": 150_000,
+        "gas": 120_000,
         "maxFeePerGas": max_fee,
         "maxPriorityFeePerGas": priority_fee,
         "value": 0,

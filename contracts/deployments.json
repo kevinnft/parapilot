@@ -6,12 +6,14 @@
   "deployer": "0x6E95951bbAc8454950508394EC0F5fcCF6c4d8Bf",
   "contracts": {
     "SessionKeyValidator": {
-      "address": "0x01022d952087B7FBacc8DA53478B0F555Fe457C4",
-      "explorer": "https://testnet.monadexplorer.com/address/0x01022d952087B7FBacc8DA53478B0F555Fe457C4"
+      "address": "0x847F5D03c3aFC47DcBCd041D0F02D52EFb242991",
+      "explorer": "https://testnet.monadexplorer.com/address/0x847F5D03c3aFC47DcBCd041D0F02D52EFb242991",
+      "note": "v2: token whitelist enforced, validateExecution restricted to the bound account"
     },
     "ParaPilotAccount": {
-      "address": "0x8A55d40977C49D4Ac5C569ebA4631D4e9026C592",
-      "explorer": "https://testnet.monadexplorer.com/address/0x8A55d40977C49D4Ac5C569ebA4631D4e9026C592"
+      "address": "0xB56586E881a2F0f70A0c221ace4Efe7bD68C2EF7",
+      "explorer": "https://testnet.monadexplorer.com/address/0xB56586E881a2F0f70A0c221ace4Efe7bD68C2EF7",
+      "note": "v2: executeSwapViaSessionKey counts every token toward the 24h cap"
     },
     "MockDEX": {
       "address": "0x191382fF69aaF5f91617644b6281f224D9bA2764",
@@ -69,20 +71,46 @@
       "explorer": "https://testnet.monadexplorer.com/tx/0xe5345c41f51ddc62dff7947a219b76c80a435ccd00c8037966a843819af333b9"
     }
   ],
-  "updatedAt": "2026-09-20 12:45:00 UTC",
   "multiTokenSwapsVerified": {
-    "dexAddress": "0xbc12983288B4225205Dc53702B1eba6298f94376",
+    "dexAddress": "0x191382fF69aaF5f91617644b6281f224D9bA2764",
+    "note": "Live router. Earlier txs below were against the retired router 0xbc12983288B4225205Dc53702B1eba6298f94376 and are historical only.",
     "monToUsdc": {
       "tx": "0xaa1cfa62834c7e7dea9d76127dcaee7cb2c50fe6508eb1444ae08923eac2bd9a",
-      "status": "SUCCESS (0x1)"
+      "status": "SUCCESS (0x1)",
+      "router": "0xbc12983288B4225205Dc53702B1eba6298f94376"
     },
     "usdcToMon": {
       "tx": "0xcbb1549faeab5455c9ebeafe67281ec1153ba4933e0dee14ba083b19916669f4",
-      "status": "SUCCESS (0x1)"
+      "status": "SUCCESS (0x1)",
+      "router": "0xbc12983288B4225205Dc53702B1eba6298f94376"
     },
     "usdcToWeth": {
       "tx": "0xa175e859b82a65845a8269985f2e72daf3791846af095f89fd942895a0eae361",
-      "status": "SUCCESS (0x1)"
+      "status": "SUCCESS (0x1)",
+      "router": "0xbc12983288B4225205Dc53702B1eba6298f94376"
     }
-  }
+  },
+  "gasPolicy": {
+    "note": "Monad testnet charges gasLimit * effectiveGasPrice, not gasUsed. Caps are tight on purpose.",
+    "swap": 250000,
+    "approve": 100000,
+    "mintOrRegister": 200000,
+    "nativeTransfer": 25000,
+    "contractDeploy": 900000,
+    "maxPriorityFeePerGas": 2000000000,
+    "maxFeeMultiplier": 1.25,
+    "retest": {
+      "tx": "0x4a9fbd8235d3126b842c42238407bc41455db96d08160ac655c26c2d012073bb",
+      "block": 64602991,
+      "status": "SUCCESS (0x1)",
+      "gasLimit": 250000,
+      "gasUsedReported": 250000,
+      "ethEstimateGas": 60196,
+      "effectiveGasPriceGwei": 102,
+      "paidMon": 0.0255,
+      "explorer": "https://testnet.monadexplorer.com/tx/0x4a9fbd8235d3126b842c42238407bc41455db96d08160ac655c26c2d012073bb"
+    }
+  },
+  "updatedAt": "2026-09-22T02:24:49Z",
+  "sessionKey": "0x4612501ad4F82475f3F94458c2cc4257267dD0cc"
 }

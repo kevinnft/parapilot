@@ -46,7 +46,9 @@ def main():
 
     nonce_w1 = int(rpc("eth_getTransactionCount", [acct_w1.address, "pending"]), 16)
     gp = int(rpc("eth_gasPrice", []), 16)
-    gas_price = int(gp * 1.1)
+    # Type-2 only. Monad testnet bills the full gas limit, so every cap below is tight.
+    max_fee = int(gp * 1.25)
+    priority_fee = 2_000_000_000
 
     with open("C:/Users/RYZEN/parapilot/contracts/artifacts/src/mocks/MockDEX.sol/MockDEX.json") as f:
         dex_art = json.load(f)
@@ -54,7 +56,8 @@ def main():
     # 1. Deploy upgraded MockDEX
     print("[1] Deploying upgraded MockDEX...")
     tx_dep = {
-        "chainId": CHAIN_ID, "nonce": nonce_w1, "gas": 1500000, "gasPrice": gas_price,
+        "chainId": CHAIN_ID, "nonce": nonce_w1, "gas": 900_000,
+        "maxFeePerGas": max_fee, "maxPriorityFeePerGas": priority_fee, "type": 2,
         "value": 0, "data": bytes.fromhex(dex_art["bytecode"].replace("0x", ""))
     }
     h_dep = send_tx(acct_w1, tx_dep)
@@ -66,7 +69,8 @@ def main():
     # 2. Fund new MockDEX with 0.1 MON for payouts when users sell tokens for MON
     print("\n[2] Funding new MockDEX with 0.1 MON...")
     tx_fund = {
-        "chainId": CHAIN_ID, "nonce": nonce_w1, "to": new_dex, "gas": 50000, "gasPrice": gas_price,
+        "chainId": CHAIN_ID, "nonce": nonce_w1, "to": new_dex, "gas": 25_000,
+        "maxFeePerGas": max_fee, "maxPriorityFeePerGas": priority_fee, "type": 2,
         "value": int(0.1 * 1e18), "data": b""
     }
     h_fund = send_tx(acct_w1, tx_fund)
@@ -78,18 +82,18 @@ def main():
     usdc = to_checksum_address("0xd4309703c783E671F5Ef61630Cb576916cE03200")
     weth = to_checksum_address("0x7CeEe8e62AfeeD5645cD4024DbfeF3e5F71145e0")
     kuru = to_checksum_address("0x15c2cEf5c93AD6cc6158812C2e128579727Dd4ba")
-    val_addr = to_checksum_address("0x01022d952087B7FBacc8DA53478B0F555Fe457C4")
+    val_addr = to_checksum_address("0x847F5D03c3aFC47DcBCd041D0F02D52EFb242991")
 
     sel_mint = keccak(b"mint(address,uint256)")[:4].hex()
     data_m_usdc = sel_mint + new_dex[2:].lower().zfill(64) + hex(5_000_000 * 10**6)[2:].zfill(64)
     data_m_weth = sel_mint + new_dex[2:].lower().zfill(64) + hex(500 * 10**18)[2:].zfill(64)
     data_m_kuru = sel_mint + new_dex[2:].lower().zfill(64) + hex(5_000_000 * 10**18)[2:].zfill(64)
 
-    h_m1 = send_tx(acct_w1, {"chainId": CHAIN_ID, "nonce": nonce_w1, "to": usdc, "gas": 150000, "gasPrice": gas_price, "value": 0, "data": bytes.fromhex(data_m_usdc)})
+    h_m1 = send_tx(acct_w1, {"chainId": CHAIN_ID, "nonce": nonce_w1, "to": usdc, "gas": 120_000, "maxFeePerGas": max_fee, "maxPriorityFeePerGas": priority_fee, "type": 2, "value": 0, "data": bytes.fromhex(data_m_usdc)})
     nonce_w1 += 1
-    h_m2 = send_tx(acct_w1, {"chainId": CHAIN_ID, "nonce": nonce_w1, "to": weth, "gas": 150000, "gasPrice": gas_price, "value": 0, "data": bytes.fromhex(data_m_weth)})
+    h_m2 = send_tx(acct_w1, {"chainId": CHAIN_ID, "nonce": nonce_w1, "to": weth, "gas": 120_000, "maxFeePerGas": max_fee, "maxPriorityFeePerGas": priority_fee, "type": 2, "value": 0, "data": bytes.fromhex(data_m_weth)})
     nonce_w1 += 1
-    h_m3 = send_tx(acct_w1, {"chainId": CHAIN_ID, "nonce": nonce_w1, "to": kuru, "gas": 150000, "gasPrice": gas_price, "value": 0, "data": bytes.fromhex(data_m_kuru)})
+    h_m3 = send_tx(acct_w1, {"chainId": CHAIN_ID, "nonce": nonce_w1, "to": kuru, "gas": 120_000, "maxFeePerGas": max_fee, "maxPriorityFeePerGas": priority_fee, "type": 2, "value": 0, "data": bytes.fromhex(data_m_kuru)})
     nonce_w1 += 1
     wait_receipt(h_m3)
     print("    Reserves minted successfully!")
@@ -98,7 +102,7 @@ def main():
     print("\n[4] Whitelisting new MockDEX on SessionKeyValidator...")
     sel_wc = keccak(b"setWhitelistedContract(address,address,bool)")[:4].hex()
     data_wc = sel_wc + acct_w2.address[2:].lower().zfill(64) + new_dex[2:].lower().zfill(64) + hex(1)[2:].zfill(64)
-    h_wc = send_tx(acct_w1, {"chainId": CHAIN_ID, "nonce": nonce_w1, "to": val_addr, "gas": 150000, "gasPrice": gas_price, "value": 0, "data": bytes.fromhex(data_wc)})
+    h_wc = send_tx(acct_w1, {"chainId": CHAIN_ID, "nonce": nonce_w1, "to": val_addr, "gas": 120_000, "maxFeePerGas": max_fee, "maxPriorityFeePerGas": priority_fee, "type": 2, "value": 0, "data": bytes.fromhex(data_wc)})
     nonce_w1 += 1
     wait_receipt(h_wc)
 
@@ -112,7 +116,7 @@ def main():
     for m in methods:
         m_sel = keccak(m.encode())[:4].hex()
         data_wm = sel_wm + acct_w2.address[2:].lower().zfill(64) + new_dex[2:].lower().zfill(64) + m_sel.ljust(64, '0') + hex(1)[2:].zfill(64)
-        h_wm = send_tx(acct_w1, {"chainId": CHAIN_ID, "nonce": nonce_w1, "to": val_addr, "gas": 150000, "gasPrice": gas_price, "value": 0, "data": bytes.fromhex(data_wm)})
+        h_wm = send_tx(acct_w1, {"chainId": CHAIN_ID, "nonce": nonce_w1, "to": val_addr, "gas": 120_000, "maxFeePerGas": max_fee, "maxPriorityFeePerGas": priority_fee, "type": 2, "value": 0, "data": bytes.fromhex(data_wm)})
         nonce_w1 += 1
         wait_receipt(h_wm)
         print(f"    Whitelisted method: {m} (0x{m_sel})")
@@ -121,7 +125,7 @@ def main():
     print("\n[5] Test 1: Swap MON -> USDC...")
     sel_eth_to_tok = keccak(b"swapExactETHForTokens(address,uint256)")[:4].hex()
     data_s1 = bytes.fromhex(sel_eth_to_tok + usdc[2:].lower().zfill(64) + hex(0)[2:].zfill(64))
-    h_s1 = send_tx(acct_w1, {"chainId": CHAIN_ID, "nonce": nonce_w1, "to": new_dex, "gas": 200000, "gasPrice": gas_price, "value": int(0.01 * 1e18), "data": data_s1})
+    h_s1 = send_tx(acct_w1, {"chainId": CHAIN_ID, "nonce": nonce_w1, "to": new_dex, "gas": 250_000, "maxFeePerGas": max_fee, "maxPriorityFeePerGas": priority_fee, "type": 2, "value": int(0.01 * 1e18), "data": data_s1})
     nonce_w1 += 1
     r_s1 = wait_receipt(h_s1)
     print(f"    MON -> USDC Tx: {h_s1} (Status: {r_s1['status']})")
@@ -130,7 +134,7 @@ def main():
     print("\n[6] Test 2: Swap USDC -> MON...")
     sel_tok_to_eth = keccak(b"swapExactTokensForETH(address,uint256,uint256)")[:4].hex()
     data_s2 = bytes.fromhex(sel_tok_to_eth + usdc[2:].lower().zfill(64) + hex(10 * 10**6)[2:].zfill(64) + hex(0)[2:].zfill(64))
-    h_s2 = send_tx(acct_w1, {"chainId": CHAIN_ID, "nonce": nonce_w1, "to": new_dex, "gas": 200000, "gasPrice": gas_price, "value": 0, "data": data_s2})
+    h_s2 = send_tx(acct_w1, {"chainId": CHAIN_ID, "nonce": nonce_w1, "to": new_dex, "gas": 250_000, "maxFeePerGas": max_fee, "maxPriorityFeePerGas": priority_fee, "type": 2, "value": 0, "data": data_s2})
     nonce_w1 += 1
     r_s2 = wait_receipt(h_s2)
     print(f"    USDC -> MON Tx: {h_s2} (Status: {r_s2['status']})")
@@ -139,7 +143,7 @@ def main():
     print("\n[7] Test 3: Swap USDC -> WETH...")
     sel_tok_to_tok = keccak(b"swapExactTokensForTokens(address,address,uint256,uint256)")[:4].hex()
     data_s3 = bytes.fromhex(sel_tok_to_tok + usdc[2:].lower().zfill(64) + weth[2:].lower().zfill(64) + hex(20 * 10**6)[2:].zfill(64) + hex(0)[2:].zfill(64))
-    h_s3 = send_tx(acct_w1, {"chainId": CHAIN_ID, "nonce": nonce_w1, "to": new_dex, "gas": 200000, "gasPrice": gas_price, "value": 0, "data": data_s3})
+    h_s3 = send_tx(acct_w1, {"chainId": CHAIN_ID, "nonce": nonce_w1, "to": new_dex, "gas": 250_000, "maxFeePerGas": max_fee, "maxPriorityFeePerGas": priority_fee, "type": 2, "value": 0, "data": data_s3})
     nonce_w1 += 1
     r_s3 = wait_receipt(h_s3)
     print(f"    USDC -> WETH Tx: {h_s3} (Status: {r_s3['status']})")

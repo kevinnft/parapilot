@@ -70,9 +70,9 @@ def main():
     acct_w2 = Account.from_key(w2_pk if w2_pk.startswith("0x") else "0x" + w2_pk)
     nonce_w1 = get_nonce(acct_w1.address)
     
-    val_addr = to_checksum_address("0x01022d952087B7FBacc8DA53478B0F555Fe457C4")
-    acct_addr = to_checksum_address("0x8A55d40977C49D4Ac5C569ebA4631D4e9026C592")
-    dex_addr = to_checksum_address("0xf33d5C786f1f6fD6890CE7ab9Ad7beAC363443B1")
+    val_addr = to_checksum_address("0x847F5D03c3aFC47DcBCd041D0F02D52EFb242991")
+    acct_addr = to_checksum_address("0xB56586E881a2F0f70A0c221ace4Efe7bD68C2EF7")
+    dex_addr = to_checksum_address("0x191382fF69aaF5f91617644b6281f224D9bA2764")
     usdc_addr = to_checksum_address("0xd4309703c783E671F5Ef61630Cb576916cE03200")
     weth_addr = to_checksum_address("0x7CeEe8e62AfeeD5645cD4024DbfeF3e5F71145e0")
     kuru_addr = to_checksum_address("0x15c2cEf5c93AD6cc6158812C2e128579727Dd4ba")
@@ -90,17 +90,17 @@ def main():
     
     # 1,000,000 USDC
     data_usdc = sel_mint + dex_addr[2:].lower().zfill(64) + hex(1_000_000 * 10**6)[2:].zfill(64)
-    tx_m1 = send_tx(acct_w1, {"chainId": CHAIN_ID, "nonce": nonce_w1, "to": usdc_addr, "gas": 150000, "maxFeePerGas": int(get_gas_price()*1.3), "maxPriorityFeePerGas": 2_000_000_000, "value": 0, "data": bytes.fromhex(data_usdc), "type": 2})
+    tx_m1 = send_tx(acct_w1, {"chainId": CHAIN_ID, "nonce": nonce_w1, "to": usdc_addr, "gas": 150000, "maxFeePerGas": int(get_gas_price()*1.25), "maxPriorityFeePerGas": 2_000_000_000, "value": 0, "data": bytes.fromhex(data_usdc), "type": 2})
     nonce_w1 += 1
 
     # 100 WETH
     data_weth = sel_mint + dex_addr[2:].lower().zfill(64) + hex(100 * 10**18)[2:].zfill(64)
-    tx_m2 = send_tx(acct_w1, {"chainId": CHAIN_ID, "nonce": nonce_w1, "to": weth_addr, "gas": 150000, "maxFeePerGas": int(get_gas_price()*1.3), "maxPriorityFeePerGas": 2_000_000_000, "value": 0, "data": bytes.fromhex(data_weth), "type": 2})
+    tx_m2 = send_tx(acct_w1, {"chainId": CHAIN_ID, "nonce": nonce_w1, "to": weth_addr, "gas": 150000, "maxFeePerGas": int(get_gas_price()*1.25), "maxPriorityFeePerGas": 2_000_000_000, "value": 0, "data": bytes.fromhex(data_weth), "type": 2})
     nonce_w1 += 1
 
     # 1,000,000 KURU
     data_kuru = sel_mint + dex_addr[2:].lower().zfill(64) + hex(1_000_000 * 10**18)[2:].zfill(64)
-    tx_m3 = send_tx(acct_w1, {"chainId": CHAIN_ID, "nonce": nonce_w1, "to": kuru_addr, "gas": 150000, "maxFeePerGas": int(get_gas_price()*1.3), "maxPriorityFeePerGas": 2_000_000_000, "value": 0, "data": bytes.fromhex(data_kuru), "type": 2})
+    tx_m3 = send_tx(acct_w1, {"chainId": CHAIN_ID, "nonce": nonce_w1, "to": kuru_addr, "gas": 150000, "maxFeePerGas": int(get_gas_price()*1.25), "maxPriorityFeePerGas": 2_000_000_000, "value": 0, "data": bytes.fromhex(data_kuru), "type": 2})
     nonce_w1 += 1
     
     wait_for_receipt(tx_m3)
@@ -124,7 +124,7 @@ def main():
     )
     tx_reg = send_tx(acct_w1, {
         "chainId": CHAIN_ID, "nonce": nonce_w1, "to": val_addr,
-        "gas": 350000, "maxFeePerGas": int(get_gas_price()*1.3), "maxPriorityFeePerGas": 2_000_000_000,
+        "gas": 350000, "maxFeePerGas": int(get_gas_price()*1.25), "maxPriorityFeePerGas": 2_000_000_000,
         "value": 0, "data": bytes.fromhex(data_reg), "type": 2
     })
     nonce_w1 += 1
@@ -137,13 +137,13 @@ def main():
     print("\n[3] Whitelisting MockDEX & swap method...")
     sel_wc = keccak(b"setWhitelistedContract(address,address,bool)")[:4].hex()
     data_wc = sel_wc + acct_w2.address[2:].lower().zfill(64) + dex_addr[2:].lower().zfill(64) + hex(1)[2:].zfill(64)
-    tx_wc = send_tx(acct_w1, {"chainId": CHAIN_ID, "nonce": nonce_w1, "to": val_addr, "gas": 150000, "maxFeePerGas": int(get_gas_price()*1.3), "maxPriorityFeePerGas": 2_000_000_000, "value": 0, "data": bytes.fromhex(data_wc), "type": 2})
+    tx_wc = send_tx(acct_w1, {"chainId": CHAIN_ID, "nonce": nonce_w1, "to": val_addr, "gas": 150000, "maxFeePerGas": int(get_gas_price()*1.25), "maxPriorityFeePerGas": 2_000_000_000, "value": 0, "data": bytes.fromhex(data_wc), "type": 2})
     nonce_w1 += 1
 
     sel_wm = keccak(b"setWhitelistedMethod(address,address,bytes4,bool)")[:4].hex()
     swap_sel = keccak(b"swapExactETHForTokens(address,uint256)")[:4].hex()
     data_wm = sel_wm + acct_w2.address[2:].lower().zfill(64) + dex_addr[2:].lower().zfill(64) + swap_sel.ljust(64, '0') + hex(1)[2:].zfill(64)
-    tx_wm = send_tx(acct_w1, {"chainId": CHAIN_ID, "nonce": nonce_w1, "to": val_addr, "gas": 150000, "maxFeePerGas": int(get_gas_price()*1.3), "maxPriorityFeePerGas": 2_000_000_000, "value": 0, "data": bytes.fromhex(data_wm), "type": 2})
+    tx_wm = send_tx(acct_w1, {"chainId": CHAIN_ID, "nonce": nonce_w1, "to": val_addr, "gas": 150000, "maxFeePerGas": int(get_gas_price()*1.25), "maxPriorityFeePerGas": 2_000_000_000, "value": 0, "data": bytes.fromhex(data_wm), "type": 2})
     nonce_w1 += 1
     rec_wm = wait_for_receipt(tx_wm)
     print(f"    Whitelisting Status: {rec_wm.get('status')}")
@@ -152,7 +152,7 @@ def main():
     bal_pa = int(rpc_call("eth_getBalance", [acct_addr, "latest"]), 16)
     if bal_pa < int(0.05 * 1e18):
         print("\n[4] Funding ParaPilotAccount...")
-        tx_fund = send_tx(acct_w1, {"chainId": CHAIN_ID, "nonce": nonce_w1, "to": acct_addr, "gas": 50000, "maxFeePerGas": int(get_gas_price()*1.3), "maxPriorityFeePerGas": 2_000_000_000, "value": int(0.15 * 1e18), "type": 2})
+        tx_fund = send_tx(acct_w1, {"chainId": CHAIN_ID, "nonce": nonce_w1, "to": acct_addr, "gas": 50000, "maxFeePerGas": int(get_gas_price()*1.25), "maxPriorityFeePerGas": 2_000_000_000, "value": int(0.15 * 1e18), "type": 2})
         nonce_w1 += 1
         wait_for_receipt(tx_fund)
 
@@ -160,7 +160,7 @@ def main():
     bal_w2 = int(rpc_call("eth_getBalance", [acct_w2.address, "latest"]), 16)
     if bal_w2 < int(0.01 * 1e18):
         print("\n[5] Funding Agent W002 with 0.05 MON for gas...")
-        tx_w2 = send_tx(acct_w1, {"chainId": CHAIN_ID, "nonce": nonce_w1, "to": acct_w2.address, "gas": 25000, "maxFeePerGas": int(get_gas_price()*1.3), "maxPriorityFeePerGas": 2_000_000_000, "value": int(0.05 * 1e18), "type": 2})
+        tx_w2 = send_tx(acct_w1, {"chainId": CHAIN_ID, "nonce": nonce_w1, "to": acct_w2.address, "gas": 25000, "maxFeePerGas": int(get_gas_price()*1.25), "maxPriorityFeePerGas": 2_000_000_000, "value": int(0.05 * 1e18), "type": 2})
         nonce_w1 += 1
         wait_for_receipt(tx_w2)
 
@@ -183,7 +183,7 @@ def main():
 
     tx_agent = send_tx(acct_w2, {
         "chainId": CHAIN_ID, "nonce": nonce_w2, "to": acct_addr,
-        "gas": 500000, "maxFeePerGas": int(get_gas_price()*1.3), "maxPriorityFeePerGas": 2_000_000_000,
+        "gas": 500000, "maxFeePerGas": int(get_gas_price()*1.25), "maxPriorityFeePerGas": 2_000_000_000,
         "value": 0, "data": bytes.fromhex(data_exec), "type": 2
     })
     print(f"    Swap Tx Hash: {tx_agent}")
@@ -208,7 +208,7 @@ def main():
     direct_swap_payload = bytes.fromhex(swap_sel + usdc_addr[2:].lower().zfill(64) + hex(0)[2:].zfill(64))
     tx_direct = send_tx(acct_w1, {
         "chainId": CHAIN_ID, "nonce": nonce_w1, "to": dex_addr,
-        "gas": 300000, "maxFeePerGas": int(get_gas_price()*1.3), "maxPriorityFeePerGas": 2_000_000_000,
+        "gas": 300000, "maxFeePerGas": int(get_gas_price()*1.25), "maxPriorityFeePerGas": 2_000_000_000,
         "value": int(0.02 * 1e18), "data": direct_swap_payload, "type": 2
     })
     print(f"    Direct Swap Tx Hash: {tx_direct}")

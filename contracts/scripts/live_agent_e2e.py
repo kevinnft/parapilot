@@ -58,8 +58,8 @@ def main():
 
     owner_addr = acct_w1.address
     agent_addr = acct_w2.address
-    val_addr = "0x01022d952087B7FBacc8DA53478B0F555Fe457C4"
-    account_addr = "0x8A55d40977C49D4Ac5C569ebA4631D4e9026C592"
+    val_addr = "0x847F5D03c3aFC47DcBCd041D0F02D52EFb242991"
+    account_addr = "0xB56586E881a2F0f70A0c221ace4Efe7bD68C2EF7"
 
     print(f"Owner (User) Address:      {owner_addr}")
     print(f"Agent (Session Key):       {agent_addr}")
