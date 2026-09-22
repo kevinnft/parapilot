@@ -580,34 +580,51 @@ export default function Home() {
     }
   };
 
-  // Connect via Passkey / WebAuthn
-  const connectPasskey = () => {
+  // Connect via a real WebAuthn passkey. The credential is created by the
+  // browser; its P-256 public key is what PasskeyAccount verifies on-chain.
+  const connectPasskey = async () => {
+    if (typeof window === "undefined" || !window.PublicKeyCredential) {
+      addLog("POLICY", "error", "This browser has no WebAuthn passkey support.");
+      return;
+    }
     setIsConnectingWallet(true);
-    setTimeout(() => {
-      const { mnemonic, privateKey, address } = ensurePasskeyRecoveryKey("passkey");
-      const passkeyAddr = address || "0x6E95951bbAc8454950508394EC0F5fcCF6c4d8Bf";
-      
-      let agentKey = localStorage.getItem("parapilot_passkey_agent_key");
-      if (!agentKey) {
-        agentKey = privateKeyToAccount(generatePrivateKey()).address;
-        localStorage.setItem("parapilot_passkey_agent_key", agentKey);
-      }
+    try {
+      const challenge = crypto.getRandomValues(new Uint8Array(32));
+      const credential = await navigator.credentials.create({
+        publicKey: {
+          challenge,
+          rp: { name: "ParaPilot", id: location.hostname },
+          user: { id: crypto.getRandomValues(new Uint8Array(16)), name: "parapilot", displayName: "ParaPilot" },
+          pubKeyCredParams: [{ type: "public-key", alg: -7 }],
+          authenticatorSelection: { residentKey: "preferred", userVerification: "preferred" },
+          timeout: 60000,
+          attestation: "none",
+        },
+      }) as PublicKeyCredential | null;
+      if (!credential) throw new Error("Passkey creation was cancelled.");
 
-      setConnectedAddress(passkeyAddr);
+      const spki = (credential.response as AuthenticatorAttestationResponse).getPublicKey();
+      if (!spki) throw new Error("The authenticator did not return a public key.");
+      const raw = new Uint8Array(spki);
+      const x = raw.slice(-64, -32);
+      const y = raw.slice(-32);
+      const hex = (b: Uint8Array) => "0x" + Array.from(b).map((v) => v.toString(16).padStart(2, "0")).join("");
+
+      setConnectedAddress(hex(x));
       setConnectionMethod("passkey");
-      setActiveSessionKey(agentKey);
+      setActiveSessionKey(hex(y));
       setIsSessionActive(true);
-      setSpentToday(0.0);
-      localStorage.setItem("parapilot_wallet_addr", passkeyAddr);
       localStorage.setItem("parapilot_wallet_method", "passkey");
-      fetchMonadBalance(passkeyAddr);
-      fetchWalletTokens(passkeyAddr);
-      addLog("POLICY", "success", `Authenticated via Passkey (WebAuthn): ${passkeyAddr.slice(0, 6)}...${passkeyAddr.slice(-4)}`);
-      addLog("VALIDATOR", "success", `Dedicated Session Key Armed: ${agentKey.slice(0, 6)}...${agentKey.slice(-4)}`);
-      addLog("POLICY", "info", "BIP-39 12-word recovery phrase active (viewable under Backup).");
-      setIsConnectingWallet(false);
+      localStorage.setItem("parapilot_passkey_x", hex(x));
+      localStorage.setItem("parapilot_passkey_y", hex(y));
+      addLog("POLICY", "success", `Passkey created on this device. Public key X ${hex(x).slice(0, 8)}... is verifiable by PasskeyAccount.`);
+      addLog("VALIDATOR", "info", "PasskeyAccount 0x882CfcBC...4799 checks the P-256 signature on-chain. No seed phrase was generated.");
       setShowWalletModal(false);
-    }, 400);
+    } catch (err: any) {
+      addLog("POLICY", "error", `Passkey failed: ${err?.message || err}`);
+    } finally {
+      setIsConnectingWallet(false);
+    }
   };
 
   // Connect via Demo Showcase Account
@@ -795,37 +812,24 @@ export default function Home() {
           }
         }
 
-        addLog("MONAD_EVM", "info", `Awaiting confirmation from your wallet extension (${sourceToken} -> ${targetToken})...`);
+        addLog("MONAD_EVM", "info", `Awaiting confirmation from your wallet (${sourceToken} -> ${targetToken}). The swap is checked by the on-chain policy before it settles.`);
 
-        let calldata: string;
-        let weiVal = "0x0";
-
-        if (sourceToken === "MON") {
-          // swapExactETHForTokens(address tokenOut, uint256 minAmountOut) -> selector: 0xb79c48e5
-          const dstAddr = tokenAddresses[targetToken];
-          calldata = `0xb79c48e5${dstAddr.slice(2).toLowerCase().padStart(64, "0")}${expectedOutUnits.toString(16).padStart(64, "0")}`;
-          weiVal = "0x" + BigInt(Math.floor(amountNum * 1e18)).toString(16);
-        } else if (targetToken === "MON") {
-          // swapExactTokensForETH(address tokenIn, uint256 amountIn, uint256 minAmountOut) -> selector: 0xc038847a
-          const srcAddr = tokenAddresses[sourceToken];
-          const inUnits = BigInt(Math.floor(amountNum * 10 ** (tokenDecimals[sourceToken] || 18)));
-          calldata = `0xc038847a${srcAddr.slice(2).toLowerCase().padStart(64, "0")}${inUnits.toString(16).padStart(64, "0")}${expectedOutUnits.toString(16).padStart(64, "0")}`;
-        } else {
-          // swapExactTokensForTokens(address tokenIn, address tokenOut, uint256 amountIn, uint256 minAmountOut) -> selector: 0x89fe039b
-          const srcAddr = tokenAddresses[sourceToken];
-          const dstAddr = tokenAddresses[targetToken];
-          const inUnits = BigInt(Math.floor(amountNum * 10 ** (tokenDecimals[sourceToken] || 18)));
-          calldata = `0x89fe039b${srcAddr.slice(2).toLowerCase().padStart(64, "0")}${dstAddr.slice(2).toLowerCase().padStart(64, "0")}${inUnits.toString(16).padStart(64, "0")}${expectedOutUnits.toString(16).padStart(64, "0")}`;
-        }
+        const prepared = await fetch("/api/execute-swap", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ sourceToken, targetToken, amount: amountNum, prepare: true }),
+        });
+        const built = await prepared.json();
+        if (!prepared.ok || !built.data) throw new Error(built.error || "Could not build the policy-gated swap.");
 
         const txHash = await provider.request({
           method: "eth_sendTransaction",
           params: [
             {
               from: connectedAddress,
-              to: DEX_ADDRESS,
-              value: weiVal,
-              data: calldata,
+              to: built.to,
+              value: "0x0",
+              data: built.data,
               gas: MONAD_GAS.swap,
               maxFeePerGas: MONAD_GAS.maxFeePerGas,
               maxPriorityFeePerGas: MONAD_GAS.maxPriorityFeePerGas,
@@ -838,8 +842,8 @@ export default function Home() {
 
         setExecutionToast({
           type: "success",
-          title: `✅ Swap Confirmed: ${amountNum} ${sourceToken} → ${tokenReceived} ${targetToken}`,
-          desc: `Broadcasted directly from your wallet ${connectedAddress.slice(0, 6)}...${connectedAddress.slice(-4)} to MockDEX. Click to view on Explorer!`,
+          title: `✅ Swap Submitted: ${amountNum} ${sourceToken} → ${tokenReceived} ${targetToken}`,
+          desc: `Signed by your wallet and routed through ParaPilotAccount, so the on-chain policy applies. Open the explorer to confirm.`,
           txHash: txHash,
         });
 

@@ -60,13 +60,6 @@ export async function POST(request: Request) {
       ? parseEther(amount.toFixed(4))
       : BigInt(Math.floor(amount * 10 ** inConfig.decimals));
 
-    const pk = (process.env.SESSION_PRIVATE_KEY || process.env.DEMO_WALLET_PRIVATE_KEY ||
-      "0xd1dac037e3892d6a327cdb5fdceb9f4deb37b97a2025201d5ca05f1e86c9c101") as `0x${string}`;
-    const account = privateKeyToAccount(pk.startsWith("0x") ? pk : `0x${pk}`);
-
-    const publicClient = createPublicClient({ chain: monadTestnet, transport: http() });
-    const walletClient = createWalletClient({ account, chain: monadTestnet, transport: http() });
-
     // The session key signs, but the account holds the funds and the validator
     // checks router, method, token and the 24h cap before anything moves.
     const routed = encodeFunctionData({
@@ -74,6 +67,17 @@ export async function POST(request: Request) {
       functionName: "executeSwapViaSessionKey",
       args: [DEX_ROUTER, inConfig.address, outConfig.address, amountInUnits, expectedOutUnits],
     });
+
+    if (body.prepare) {
+      return NextResponse.json({ to: ACCOUNT, data: routed, gas: "0x3D090" });
+    }
+
+    const pk = (process.env.SESSION_PRIVATE_KEY || process.env.DEMO_WALLET_PRIVATE_KEY ||
+      "0xd1dac037e3892d6a327cdb5fdceb9f4deb37b97a2025201d5ca05f1e86c9c101") as `0x${string}`;
+    const account = privateKeyToAccount(pk.startsWith("0x") ? pk : `0x${pk}`);
+
+    const publicClient = createPublicClient({ chain: monadTestnet, transport: http() });
+    const walletClient = createWalletClient({ account, chain: monadTestnet, transport: http() });
 
     const gasPrice = await publicClient.getGasPrice();
     const txHash = await walletClient.sendTransaction({
