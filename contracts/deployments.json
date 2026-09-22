@@ -18,7 +18,13 @@
     "PasskeyAccount": {
       "address": "0x882CfcBC9Fb35F8f0676ff8d72FA9294DcF64799",
       "explorer": "https://testnet.monadexplorer.com/address/0x882CfcBC9Fb35F8f0676ff8d72FA9294DcF64799",
-      "note": "WebAuthn P-256 on-chain verification with RIP-7212 fallback"
+      "note": "Earlier single-key WebAuthn account. New passkeys are checked by PasskeyVerifier, whose public key is an argument."
+    },
+    "PasskeyVerifier": {
+      "address": "0x5B27bE516faD9f4F37338573aC0EB7CE032f09F0",
+      "explorer": "https://testnet.monadexplorer.com/address/0x5B27bE516faD9f4F37338573aC0EB7CE032f09F0",
+      "deployTx": "0x8df1d7c89cda3908a41b2857853322b3a7d4e5846eed6f9cf64b6e3ebf14889a",
+      "note": "Stateless WebAuthn P-256 verifier. A 900000 gas cap reverted out of gas on the code deposit; this deploy used 1400000 and was billed the full cap."
     },
     "MockDEX": {
       "address": "0x191382fF69aaF5f91617644b6281f224D9bA2764",
@@ -102,6 +108,7 @@
     "mintOrRegister": 200000,
     "nativeTransfer": 25000,
     "contractDeploy": 900000,
+    "passkeyVerifierDeploy": 1400000,
     "maxPriorityFeePerGas": 2000000000,
     "maxFeeMultiplier": 1.25,
     "retest": {

@@ -1,16 +1,22 @@
 {
   "network": "Monad Testnet",
   "chainId": 10143,
+  "note": "v1 addresses. Superseded by the v2 pair in deployments.json. Kept so the old transaction hashes stay attributable.",
   "contracts": {
     "SessionKeyValidator": "0x01022d952087B7FBacc8DA53478B0F555Fe457C4",
     "ParaPilotAccount": "0x8A55d40977C49D4Ac5C569ebA4631D4e9026C592"
+  },
+  "current": {
+    "SessionKeyValidator": "0x847F5D03c3aFC47DcBCd041D0F02D52EFb242991",
+    "ParaPilotAccount": "0xB56586E881a2F0f70A0c221ace4Efe7bD68C2EF7",
+    "PasskeyVerifier": "0x5B27bE516faD9f4F37338573aC0EB7CE032f09F0"
   },
   "parties": {
     "owner": "0x6E95951bbAc8454950508394EC0F5fcCF6c4d8Bf",
     "agentSessionKey": "0x4612501ad4F82475f3F94458c2cc4257267dD0cc"
   },
   "liveTxHashes": {
-    "validatorDeploy": "0x01022d952087B7FBacc8DA53478B0F555Fe457C4 (Contract)",
+    "validatorDeploy": "0x01022d952087B7FBacc8DA53478B0F555Fe457C4",
     "accountDeploy": "0x29bfdbe7c7b9be78fe3ca6e6336b0bd07f8526798f1748f4f9dad3bc7f7e93ae",
     "accountFunding": "0x815117309a1d9d211ab36df66919166711cb5cf33fa676cb2baa22567b32da82",
     "policyRegistration": "0xffc34acf99310ecc27de96fad223a742fa31defa607e07dce61bf1cf3bec26fd",

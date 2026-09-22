@@ -16,6 +16,7 @@ async function main() {
   const maxFeePerGas = ((fee.gasPrice ?? 100_000_000_000n) * 125n) / 100n;
   const maxPriorityFeePerGas = 2_000_000_000n;
   // Monad testnet charges the full gas limit, so every cap is explicit.
+  // PasskeyVerifier does not fit here: its code deposit is about 1.12M gas.
   const gas = { deploy: 900_000n, fund: 25_000n };
 
   // 1. Deploy SessionKeyValidator

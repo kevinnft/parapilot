@@ -1,155 +1,110 @@
-# ParaPilot ⚡🤖
+# ParaPilot
 
-> **High-Throughput Policy Engine & Non-Custodial Session Keys for Autonomous AI Agents on Monad.**
-> Built for the **Monad Metropolis Hackathon 2026** — *Track 4: Trust, Identity & AI Infrastructure*.
+High-throughput policy engine and non-custodial session keys for autonomous AI agents on Monad.
 
----
+Built for the Monad Metropolis Hackathon 2026, Track 4: Trust, Identity and AI Infrastructure.
 
-## 📌 Executive Summary
+Live demo: https://parapilot-ruby.vercel.app/
+Code: https://github.com/kevinnft/parapilot
 
-As AI agents become active economic actors on-chain, delegating transactional authority without compromising wallet security is the primary barrier to adoption. Today, developers either:
-1. Give agents **raw private keys**, exposing user balances to catastrophic drain via prompt injections, model bugs, or malicious exploits.
-2. Require **manual user signatures** for every action, crippling autonomous high-frequency operations and latency-sensitive strategies.
+## What it does
 
-**ParaPilot** solves this dilemma by introducing a **policy-enforced smart session key architecture** optimized for Monad's Parallel EVM. Users issue scoped, temporary session credentials to autonomous agents with deterministic on-chain guardrails—including maximum spend limits, contract whitelisting, asset restrictions, and instant kill-switches.
+An agent that holds a raw private key can be drained by a prompt injection. An agent that asks for a signature on every swap is not autonomous. ParaPilot sits between those two.
 
----
+The user registers a session key on Monad. `SessionKeyValidator` checks four things before a swap moves any token: the router is whitelisted, the method selector is whitelisted, the token is whitelisted, and the 24-hour spend cap has room. `ParaPilotAccount` holds the funds. The session key signs, but it never holds the tokens. The owner can revoke the key with `revokeSessionKey`. A stranger cannot burn the quota: `validateExecution` only accepts calls from the bound account.
 
-## 🏛️ System Architecture
+A separate `PasskeyVerifier` checks a WebAuthn ES256 assertion on-chain. Monad testnet does not serve the RIP-7212 P-256 precompile, so verification falls back to OpenZeppelin's Solidity implementation. The public key is an argument, so one contract checks any passkey.
 
-```
-┌────────────────────────────────────────────────────────┐
-│                   ParaPilot Studio                     │
-│         (Passkey / WebAuthn Account Creation)          │
-└──────────────────────────┬─────────────────────────────┘
-                           │ 1. User configures policy & delegates Session Key
-                           ▼
-┌────────────────────────────────────────────────────────┐
-│             On-Chain Policy Engine (Monad)             │
-│  - SessionKeyValidator.sol                             │
-│  - PolicyEngine.sol (Spend limits, whitelists, expiry) │
-│  - EmergencyKillSwitch.sol                             │
-└──────────────────────────▲─────────────────────────────┘
-                           │ 3. Policy-gated transaction execution
-┌──────────────────────────┴─────────────────────────────┐
-│                 ParaPilot Agent Brain                  │
-│  - Market Intelligence: Zerion API (Portfolio & Risk)  │
-│  - Reasoning Layer: LLM (Qwen / Kimi / DeepSeek)       │
-│  - Autonomous Execution Signer (Session Key)           │
-└────────────────────────────────────────────────────────┘
-```
+## What is actually deployed
 
----
+Monad Testnet, chain id 10143. RPC `https://testnet-rpc.monad.xyz`.
 
-## 🔑 Key Features
+| Contract | Address |
+| --- | --- |
+| SessionKeyValidator v2 | `0x847F5D03c3aFC47DcBCd041D0F02D52EFb242991` |
+| ParaPilotAccount v2 | `0xB56586E881a2F0f70A0c221ace4Efe7bD68C2EF7` |
+| PasskeyVerifier | `0x5B27bE516faD9f4F37338573aC0EB7CE032f09F0` |
+| PasskeyAccount (single-key, earlier) | `0x882CfcBC9Fb35F8f0676ff8d72FA9294DcF64799` |
+| MockDEX | `0x191382fF69aaF5f91617644b6281f224D9bA2764` |
+| USDC (6 decimals, mock) | `0xd4309703c783E671F5Ef61630Cb576916cE03200` |
+| WETH (18 decimals, mock) | `0x7CeEe8e62AfeeD5645cD4024DbfeF3e5F71145e0` |
+| KURU (18 decimals, mock) | `0x15c2cEf5c93AD6cc6158812C2e128579727Dd4ba` |
 
-- **🛡️ Scoped On-Chain Permissions**:
-  - **Spending Limits**: Enforce maximum token outflows per epoch / per 24 hours.
-  - **Contract & Method Whitelists**: Restrict execution strictly to verified DEX routers, lending pools, or protocols.
-  - **Asset Whitelist**: Lock interactions to approved tokens (e.g., `MON`, `USDC`, `WETH`), rejecting untrusted tokens automatically.
-- **⚡ Parallel Execution on Monad**:
-  - Leverages Monad’s 10,000 TPS and sub-second block finality to validate guardrails and settle high-frequency agent actions with near-zero latency.
-- **🛑 Emergency Kill-Switch**:
-  - The wallet owner retains absolute root authority to revoke, freeze, or replace any active session key in a single transaction.
-- **📊 Real-Time Portfolio Intelligence via Zerion API**:
-  - Powers the agent's decision loop with enriched transaction history, accurate token pricing, and spam-filtered balances.
-- **👤 Passkey-Native Onboarding**:
-  - Frictionless user experience using WebAuthn / Passkeys, eliminating seed phrases for everyday operators.
+Explorer prefix: `https://testnet.monadexplorer.com/address/`
 
----
+There is no `PolicyEngine.sol` and no `EmergencyKillSwitch.sol`. Both behaviours live in `SessionKeyValidator.sol`. An earlier v1 pair (`0x0102...57C4`, `0x8A55...C592`) is retired. Its hashes are in `contracts/verified_onchain_txs.json`.
 
-## 🌐 Live Verified Deployments on Monad Testnet
+PasskeyVerifier deploy: `0x8df1d7c89cda3908a41b2857853322b3a7d4e5846eed6f9cf64b6e3ebf14889a` (status 1). A first attempt at 900,000 gas reverted out of gas; the code deposit needs about 1.12M.
 
-All contracts are deployed and verified live on **Monad Testnet (Chain ID: 10143)**:
+## Honest limits
 
-| Component | Monad Testnet Contract Address | Explorer Link |
-| :--- | :--- | :--- |
-| **SessionKeyValidator (v2)** | `0x847F5D03c3aFC47DcBCd041D0F02D52EFb242991` | [View Contract](https://testnet.monadexplorer.com/address/0x847F5D03c3aFC47DcBCd041D0F02D52EFb242991) |
-| **ParaPilotAccount (v2)** | `0xB56586E881a2F0f70A0c221ace4Efe7bD68C2EF7` | [View Contract](https://testnet.monadexplorer.com/address/0xB56586E881a2F0f70A0c221ace4Efe7bD68C2EF7) |
-| **PasskeyAccount (WebAuthn P-256)** | `0x882CfcBC9Fb35F8f0676ff8d72FA9294DcF64799` | [View Contract](https://testnet.monadexplorer.com/address/0x882CfcBC9Fb35F8f0676ff8d72FA9294DcF64799) |
-| **MockDEX Router (Multi-Token)** | `0x191382fF69aaF5f91617644b6281f224D9bA2764` | [View Contract](https://testnet.monadexplorer.com/address/0x191382fF69aaF5f91617644b6281f224D9bA2764) |
-| **USD Coin (USDC, 6 decimals)** | `0xd4309703c783E671F5Ef61630Cb576916cE03200` | [View Token](https://testnet.monadexplorer.com/address/0xd4309703c783E671F5Ef61630Cb576916cE03200) |
-| **Wrapped Ether (WETH, 18 decimals)** | `0x7CeEe8e62AfeeD5645cD4024DbfeF3e5F71145e0` | [View Token](https://testnet.monadexplorer.com/address/0x7CeEe8e62AfeeD5645cD4024DbfeF3e5F71145e0) |
-| **Kuru Token (KURU, 18 decimals)** | `0x15c2cEf5c93AD6cc6158812C2e128579727Dd4ba` | [View Token](https://testnet.monadexplorer.com/address/0x15c2cEf5c93AD6cc6158812C2e128579727Dd4ba) |
+- MockDEX mints the output token. It is not a pool, and the price is fixed in the frontend (MON 3, USDC 1, WETH 2650, KURU 0.20). The policy check is real. The market is not.
+- The browser policy panel is a preview. It does not call `registerSessionKey` or `revokeSessionKey`. Those need the owner key, and that key is not in the frontend.
+- The quota card reads `currentIntervalSpent` and `maxSpendPerInterval` from the validator, in 18-decimal units, labelled MON. A local slider does not change that number.
+- A wallet-extension swap is built as `executeSwapViaSessionKey` on `ParaPilotAccount`. It only succeeds if that wallet address is the registered session key. The demo button signs with the registered key `0x4612...D0cc`.
+- Passkey verification proves the device signed a challenge. It does not deploy a funded account for that passkey. `PasskeyAccount` is an earlier single-key contract. New passkeys go through `PasskeyVerifier`.
+- ERC-8004 agent identity is not implemented.
+- Dynamic and Privy are not integrated. They were removed from `package.json` so the repo does not claim a bounty it does not earn.
+- Monad testnet charges `gasLimit * effectiveGasPrice`, not `gasUsed`. Swap gas is capped at 250,000.
 
-### ⚡ Verified Live Transactions on Monad Testnet:
-- **Policy Registration (W002 Authorized)**: [`0x33c0ce8e...`](https://testnet.monadexplorer.com/tx/0x33c0ce8eeb3658c37500292a23d2714420b37f0ea65fe65ccab9e24f639cae79) (`Status: SUCCESS (0x1)`)
-- **Policy-Guarded Agent Swap (MON → USDC)**: [`0xbc8cb198...`](https://testnet.monadexplorer.com/tx/0xbc8cb198433460a5542fa0a303eab62c1b8dda95cc98c4450cada84dadeae5f5) (`Status: SUCCESS (0x1)`)
-- **Policy-Guarded Agent Swap (MON → WETH)**: [`0xa5d7878d...`](https://testnet.monadexplorer.com/tx/0xa5d7878d069d5b78a68b834c93873246a76541229fc166bd5ee465d2efdff486) (`Status: SUCCESS (0x1)`)
-- **Policy-Guarded Agent Swap (MON → KURU)**: [`0x7785cba3...`](https://testnet.monadexplorer.com/tx/0x7785cba3f6a8495feb5f2eabcaba30f7676cba8068b388ed3048ef7ba4c23b95) (`Status: SUCCESS (0x1)`)
-- **Direct User Multi-Token Swap (USDC → WETH)**: [`0x5bf49457...`](https://testnet.monadexplorer.com/tx/0x5bf49457ae9724fe5be4862b14a42bda0b10bb46e92da8801b9ff07b86f6b42c) (`Status: SUCCESS (0x1)`)
-- **Direct User Multi-Token Swap (WETH → USDC)**: [`0xf4e92940...`](https://testnet.monadexplorer.com/tx/0xf4e92940c8ee12506a30d8a3cc5a1c828b53023c1362d1caf08f250a4aa20f88) (`Status: SUCCESS (0x1)`)
-- **Direct User Multi-Token Swap (USDC → MON)**: [`0x7e054302...`](https://testnet.monadexplorer.com/tx/0x7e054302aeec9d2fec96312d33831588e9d03b1f5f7ca8b98aca0adbff0ca3c7) (`Status: SUCCESS (0x1)`)
-- **Live Production App URL**: **`https://parapilot-ruby.vercel.app/`**
+## Tests
 
----
-
-## 📂 Repository Structure
-
-```
-parapilot/
-├── contracts/             # Solidity Smart Contracts & Hardhat Suite
-│   ├── src/
-│   │   ├── SessionKeyValidator.sol   # Core policy validation engine
-│   │   ├── ParaPilotAccount.sol      # Policy-guarded smart account
-│   │   └── mocks/                    # Mock DEX router & ERC20 tokens
-│   ├── test/                         # Comprehensive automated tests (13 passing)
-│   └── scripts/deploy.js             # Deployment script for Monad Devnet
-├── agent/                 # Autonomous AI Agent Daemon (Python)
-│   ├── main.py            # End-to-end agent decision and execution loop
-│   ├── brain.py           # LLM reasoning layer (Qwen / Kimi)
-│   ├── zerion_client.py   # Live Zerion Builder API portfolio feed
-│   └── executor.py        # Monad RPC transaction dispatcher
-└── frontend/              # ParaPilot Studio (Next.js 14, Tailwind, Lucide)
-    └── src/app/page.tsx   # Interactive policy configurator & live telemetry
-```
-
----
-
-## 🚀 Quick Start & Verification
-
-### Prerequisites
-- Node.js >= 18.0.0
-- Python >= 3.10
-- Git
-
-### 1. Run Smart Contract Test Suite
 ```bash
 cd contracts
 npm install
 npx hardhat test
 ```
-*Output: 13/13 automated tests passing, verifying passkey WebAuthn P-256 assertions, spend limits, contract whitelisting, method gating, token gating, interval reset, and emergency kill-switch.*
 
-### 2. Run Autonomous Agent Daemon
-```bash
-cd agent
-export ZERION_API_KEY="your_zerion_key"
-export USER_WALLET_ADDRESS="0x..."
-python3 -u main.py
-```
-*Live test against real wallet: Successfully queries Zerion API, parses 50+ verified tokens, and feeds structured state into the LLM policy evaluation engine.*
+14 tests: session registration, spend cap, contract and method whitelist, expiry, interval reset, kill-switch, owner bypass, quota isolation, ERC-20 spend scaling, and WebAuthn P-256 accept/reject for any key.
 
-### 3. Launch ParaPilot Studio Dashboard
+## Run the demo
+
 ```bash
 cd frontend
 npm install
 npm run dev
 ```
-Open [http://localhost:3000](http://localhost:3000) to access the interactive Studio UI. You can adjust spending sliders, toggle token whitelists, trigger mock trade simulations, and test the emergency kill-switch.
 
----
+Open http://localhost:3000 and choose Demo Showcase Account. The swap spends `ParaPilotAccount`, not the connected address.
 
-## 🏆 Hackathon Bounties Targeted
+The agent daemon is optional and does not trade unless `LLM_API_KEY` is set and the model returns SWAP:
 
-- **Primary Track**: *Trust, Identity & AI Infrastructure* ($30,000)
-- **Sponsor Bounties**:
-  - *Best Agent Wallet Plugin* ($2,500)
-  - *Best Use of Dynamic / Privy* ($5,000)
-  - *Best Builds Powered by Qwen / Kimi*
-  - *Best Use of Zerion API*
+```bash
+cd agent
+pip install -r requirements.txt
+python main.py
+```
 
----
+Without a key it returns HOLD. That is intentional.
 
-## 📜 License
-MIT License. Open source for the decentralized community.
+## Gas
+
+EIP-1559 only. `maxFeePerGas = gasPrice * 1.25`, `maxPriorityFeePerGas = 2 gwei`.
+
+| Call | Cap |
+| --- | --- |
+| swap | 250,000 |
+| approve | 100,000 |
+| register or mint | 200,000 |
+| native transfer | 25,000 |
+| ordinary deploy | 900,000 |
+| PasskeyVerifier deploy | 1,400,000 |
+
+## Layout
+
+```
+contracts/src/SessionKeyValidator.sol   policy, whitelist, kill-switch
+contracts/src/ParaPilotAccount.sol      holds funds, builds the router call
+contracts/src/PasskeyVerifier.sol       stateless WebAuthn P-256 check
+contracts/src/PasskeyAccount.sol        earlier single-key account
+contracts/test/                         14 Hardhat tests
+frontend/src/app/page.tsx               studio
+frontend/src/app/api/execute-swap/      session-key swap
+frontend/src/app/api/policy/            live quota read
+frontend/src/app/api/passkey-verify/    eth_call into PasskeyVerifier
+agent/                                  Zerion, LLM, executor
+```
+
+## License
+
+MIT.

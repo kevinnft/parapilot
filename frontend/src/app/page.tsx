@@ -301,10 +301,10 @@ export default function Home() {
       },
       createdAt: new Date().toISOString(),
       instructions: [
-        "1. This is your emergency root recovery master key for your ParaPilot smart account on Monad.",
-        "2. If you lose your Passkey device or clear browser storage, you can import this 12-word phrase or private key into MetaMask / Rabby / ParaPilot.",
-        "3. This private key has root bypass authority (executeDirect) on ParaPilotAccount.sol, allowing you to withdraw 100% of funds or register a new passkey.",
-        "4. Keep this file offline and never share it."
+        "1. This file is an emergency secp256k1 key generated in the browser. It is not the passkey.",
+        "2. The passkey private key never leaves the device and cannot be exported here.",
+        "3. This key is not the owner of the live ParaPilotAccount. Importing it does not grant executeDirect.",
+        "4. Keep it offline. Do not treat it as a recovery path for the demo account."
       ]
     };
 
@@ -427,17 +427,12 @@ export default function Home() {
       if (savedMethod === "demo") {
         setActiveSessionKey("0x4612501ad4F82475f3F94458c2cc4257267dD0cc");
         setIsSessionActive(true);
-        setSpentToday(14.2);
+        setSpentToday(0);
         ensurePasskeyRecoveryKey("demo", savedAddr);
       } else if (savedMethod === "passkey") {
-        let agentKey = localStorage.getItem("parapilot_passkey_agent_key");
-        if (!agentKey) {
-          agentKey = privateKeyToAccount(generatePrivateKey()).address;
-          localStorage.setItem("parapilot_passkey_agent_key", agentKey);
-        }
-        setActiveSessionKey(agentKey);
-        setIsSessionActive(true);
-        ensurePasskeyRecoveryKey("passkey", savedAddr);
+        localStorage.removeItem("parapilot_wallet_addr");
+        localStorage.removeItem("parapilot_wallet_method");
+        addLog("POLICY", "info", "A previous passkey was not restored. Create it again so PasskeyVerifier can check a fresh assertion.");
       } else if (savedMethod === "extension") {
         let agentKey = localStorage.getItem(`parapilot_agent_key_${savedAddr}`);
         if (!agentKey) {
@@ -612,6 +607,55 @@ export default function Home() {
       const y = raw.slice(-32);
       const hex = (b: Uint8Array) => "0x" + Array.from(b).map((v) => v.toString(16).padStart(2, "0")).join("");
 
+      // Creating a credential does not prove the device can sign. Ask it to
+      // sign a fresh challenge and let PasskeyVerifier check it on Monad.
+      const loginChallenge = crypto.getRandomValues(new Uint8Array(32));
+      const assertion = await navigator.credentials.get({
+        publicKey: { challenge: loginChallenge, rpId: location.hostname, allowCredentials: [{ type: "public-key", id: credential.rawId }], timeout: 60000, userVerification: "preferred" },
+      }) as PublicKeyCredential | null;
+      if (!assertion) throw new Error("Passkey assertion was cancelled.");
+      const assertionResponse = assertion.response as AuthenticatorAssertionResponse;
+      const clientDataJson = new TextDecoder().decode(assertionResponse.clientDataJSON);
+      const sig = new Uint8Array(assertionResponse.signature);
+      let offset = 2;
+      if (sig[offset] !== 0x02) throw new Error("Unexpected WebAuthn signature.");
+      const rLen = sig[offset + 1];
+      let r = sig.slice(offset + 2, offset + 2 + rLen);
+      offset = offset + 2 + rLen;
+      if (sig[offset] !== 0x02) throw new Error("Unexpected WebAuthn signature.");
+      const sLen = sig[offset + 1];
+      let s = sig.slice(offset + 2, offset + 2 + sLen);
+      if (r[0] === 0) r = r.slice(1);
+      if (s[0] === 0) s = s.slice(1);
+      const N = BigInt("0xFFFFFFFF00000000FFFFFFFFFFFFFFFFBCE6FAADA7179E84F3B9CAC2FC632551");
+      let sInt = BigInt(hex(s));
+      if (sInt > N / BigInt(2)) sInt = N - sInt;
+      const pad32 = (b: Uint8Array) => {
+        const out = new Uint8Array(32);
+        out.set(b, 32 - b.length);
+        return out;
+      };
+      const rpIdHash = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(location.hostname));
+
+      const verified = await fetch("/api/passkey-verify", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          challenge: hex(loginChallenge),
+          rpIdHash: hex(new Uint8Array(rpIdHash)),
+          pubX: hex(x),
+          pubY: hex(y),
+          authenticatorData: hex(new Uint8Array(assertionResponse.authenticatorData)),
+          clientDataJson,
+          r: hex(pad32(r)),
+          s: "0x" + sInt.toString(16).padStart(64, "0"),
+        }),
+      });
+      const proof = await verified.json();
+      if (!verified.ok || !proof.verified) {
+        throw new Error(proof.error || "PasskeyVerifier rejected this assertion.");
+      }
+
       setConnectedAddress(hex(x));
       setConnectionMethod("passkey");
       setActiveSessionKey(hex(y));
@@ -619,8 +663,8 @@ export default function Home() {
       localStorage.setItem("parapilot_wallet_method", "passkey");
       localStorage.setItem("parapilot_passkey_x", hex(x));
       localStorage.setItem("parapilot_passkey_y", hex(y));
-      addLog("POLICY", "success", `Passkey created on this device. Public key X ${hex(x).slice(0, 8)}... is verifiable by PasskeyAccount.`);
-      addLog("VALIDATOR", "info", "PasskeyAccount 0x882CfcBC...4799 checks the P-256 signature on-chain. No seed phrase was generated.");
+      addLog("POLICY", "success", `Passkey verified on-chain by PasskeyVerifier 0x5B27...09F0. Public key X ${hex(x).slice(0, 10)}...`);
+      addLog("VALIDATOR", "info", "This proves the device signed the challenge. It does not create a funded account; the demo swap still uses the registered session key.");
       setShowWalletModal(false);
     } catch (err: any) {
       addLog("POLICY", "error", `Passkey failed: ${err?.message || err}`);
@@ -637,7 +681,7 @@ export default function Home() {
     setConnectionMethod("demo");
     setActiveSessionKey(demoAgentKey);
     setIsSessionActive(true);
-    setSpentToday(14.2);
+    setSpentToday(0);
     localStorage.setItem("parapilot_wallet_addr", demoAddr);
     localStorage.setItem("parapilot_wallet_method", "demo");
     fetchMonadBalance(demoAddr);
@@ -729,20 +773,20 @@ export default function Home() {
     const outDec = tokenDecimals[targetToken] || 18;
     const expectedOutUnits = BigInt(Math.floor(tokenReceived * 10 ** outDec));
 
-    // Verify limit only if NOT unlimited
-    if (!isUnlimitedLimit) {
-      const remainingQuota = +(dailyLimit - spentToday).toFixed(2);
-      if (spentToday + spendUsd > dailyLimit) {
-        addLog("BRAIN", "warning", `Trade of ${amountNum} ${sourceToken} ($${spendUsd}) exceeds 24h limit.`);
-        addLog("VALIDATOR", "error", `🛑 REVERTED: SpendLimitExceeded() - Attempted $${spendUsd} with only $${remainingQuota} quota remaining.`);
-        addLog("MONAD_EVM", "warning", "On-chain state protected: Zero funds moved from ParaPilotAccount.");
-        setExecutionToast({
-          type: "revert",
-          title: "🛑 Reverted: SpendLimitExceeded()",
-          desc: `Attempted $${spendUsd} USD, but only $${remainingQuota} remains in the 24h guardrail quota. Check 'Tanpa Batas' to remove limit.`,
-        });
-        return;
-      }
+    const spendMon = sourceToken === "MON" ? amountNum : +(spendUsd / 3).toFixed(4);
+    const remainingMon = +(dailyLimit - spentToday).toFixed(4);
+
+    // The contract counts 18-decimal token units, not dollars. A local dollar
+    // check here used to block a legal swap, or let an over-cap one through.
+    if (!isUnlimitedLimit && spentToday + spendMon > dailyLimit + 1e-9) {
+      addLog("BRAIN", "warning", `Trade of ${amountNum} ${sourceToken} (~${spendMon} MON-units) exceeds the displayed 24h cap.`);
+      addLog("VALIDATOR", "error", `SpendLimitExceeded: ${spendMon} against ${remainingMon} remaining. The chain is the authority; this is only a preview.`);
+      setExecutionToast({
+        type: "revert",
+        title: "Over the displayed 24h cap",
+        desc: `This swap counts about ${spendMon} MON-units and ${remainingMon} remain on the displayed cap. The on-chain validator is what actually reverts.`,
+      });
+      return;
     }
 
     setIsExecuting(true);
@@ -757,7 +801,7 @@ export default function Home() {
       maxPriorityFeePerGas: "0x77359400", // 2 gwei
     };
     addLog("BRAIN", "info", `Routing multi-token order: ${amountNum} ${sourceToken} -> ~${tokenReceived} ${targetToken}`);
-    addLog("VALIDATOR", "success", `Policy Passed: Multi-Token DEX ${DEX_ADDRESS.slice(0, 6)}...${DEX_ADDRESS.slice(-4)} Whitelisted, Limit OK.`);
+    addLog("VALIDATOR", "info", `Submitting to ParaPilotAccount. The validator at 0x847F...2991 decides, not this panel.`);
 
     try {
       const tokenAddresses: Record<string, string> = {
@@ -839,8 +883,8 @@ export default function Home() {
           ],
         });
 
-        addLog("MONAD_EVM", "success", `Tx Broadcasted: ${txHash.slice(0, 10)}...${txHash.slice(-4)}`);
-        setSpentToday((prev) => Math.min(dailyLimit, +(prev + spendUsd).toFixed(2)));
+        addLog("MONAD_EVM", "success", `Tx broadcast: ${txHash.slice(0, 10)}...${txHash.slice(-4)}. Quota refreshes from the validator after the receipt.`);
+        fetchOnChainPolicy(DEMO_SIGNER);
 
         setExecutionToast({
           type: "success",
@@ -868,8 +912,8 @@ export default function Home() {
         const resData = await resp.json();
 
         if (resData.success && resData.txHash) {
-          addLog("MONAD_EVM", "success", `Tx Confirmed in Block #${resData.blockNumber}! Status: SUCCESS (0x1)`);
-          setSpentToday((prev) => Math.min(dailyLimit, +(prev + spendUsd).toFixed(2)));
+          addLog("MONAD_EVM", "success", `Tx confirmed in block #${resData.blockNumber}. Status: SUCCESS (0x1)`);
+          fetchOnChainPolicy(DEMO_SIGNER);
 
           setExecutionToast({
             type: "success",
@@ -880,7 +924,6 @@ export default function Home() {
 
           fetchMonadBalance(connectedAddress);
           fetchWalletTokens(connectedAddress);
-          fetchOnChainPolicy(DEMO_SIGNER);
         } else {
           throw new Error(resData.error || "Execution failed on Monad Testnet.");
         }
@@ -910,15 +953,15 @@ export default function Home() {
       return;
     }
     setIsExecuting(true);
-    addLog("BRAIN", "warning", "⚠️ Rogue trigger: Prompt injection attempted! AI calling unauthorized drain router 0xBadF...0001.");
+    addLog("BRAIN", "warning", "Rogue trigger (local simulation, no transaction sent): prompt injection targeting drain router 0xBadF...0001.");
     setTimeout(() => {
       setIsExecuting(false);
-      addLog("VALIDATOR", "error", "🛑 REVERTED on-chain: ContractNotWhitelisted() & SpendLimitExceeded($180 > $50).");
-      addLog("MONAD_EVM", "warning", "On-chain state protected: Zero funds moved from ParaPilotAccount.");
+      addLog("VALIDATOR", "error", "Simulated revert: ContractNotWhitelisted. A live call to an unlisted router reverts with the same error; this button did not broadcast one.");
+      addLog("MONAD_EVM", "info", "No funds moved. This panel does not send the rogue call.");
       setExecutionToast({
         type: "revert",
-        title: "🛡️ Exploit Blocked by Smart Contract!",
-        desc: "Unauthorized drain to 0xBadF...0001 was rejected on-chain with ContractNotWhitelisted(). Your funds are safe.",
+        title: "Simulated block, not a live transaction",
+        desc: "An unlisted router reverts on-chain with ContractNotWhitelisted. This button only shows that path; it did not submit a transaction.",
       });
     }, 400);
   };
@@ -936,19 +979,19 @@ export default function Home() {
 
     if (isSessionActive) {
       setIsSessionActive(false);
-      addLog("KILL_SWITCH", "error", `Kill switch armed locally for ${keyDisplay}. This demo session is not the on-chain key; the live cap is enforced at 0x847F...2991.`);
+      addLog("KILL_SWITCH", "warning", `Local demo lock set for ${keyDisplay}. This does not call revokeSessionKey. The live session stays active until the owner signs that call.`);
       setExecutionToast({
         type: "kill",
-        title: "🚨 Emergency Kill-Switch Activated!",
-        desc: `Session key ${keyDisplay} revoked on-chain in SessionKeyValidator.sol. All agent trading is now locked.`,
+        title: "Local lock only",
+        desc: `The browser will refuse demo swaps for ${keyDisplay}. The on-chain session is unchanged. Revocation needs the owner key, which is not in this page.`,
       });
     } else {
       setIsSessionActive(true);
-      addLog("KILL_SWITCH", "success", `Local session ${keyDisplay} re-armed. On-chain revocation needs the owner key.`);
+      addLog("KILL_SWITCH", "info", `Local lock cleared for ${keyDisplay}. On-chain state was never changed by this button.`);
       setExecutionToast({
-        type: "success",
-        title: "✅ Session Key Re-Armed",
-        desc: `Session key ${keyDisplay} re-authorized by owner root key.`,
+        type: "info",
+        title: "Local lock cleared",
+        desc: `Demo swaps are allowed in the browser again. This did not re-register anything on-chain.`,
       });
     }
   };
@@ -956,19 +999,18 @@ export default function Home() {
   // Save Policy to Monad
   const handleSavePolicy = () => {
     setIsSavingPolicy(true);
-    addLog("POLICY", "info", "Saving the policy locally. The on-chain cap and whitelist are set by the owner key.");
+    addLog("POLICY", "info", "Saved in this browser only. Writing the on-chain cap needs the owner key, which is not in the frontend.");
     setTimeout(() => {
       setIsSavingPolicy(false);
       setHasUnsavedChanges(false);
-      const limitStr = isUnlimitedLimit ? "Unlimited (Tanpa Batas)" : `$${dailyLimit}/24h`;
-      addLog("VALIDATOR", "success", `Local policy saved: ${limitStr} | Routers: ${Object.keys(whitelistedContracts).length}.`);
-      addLog("MONAD_EVM", "info", "On-chain enforcement is live at the v2 validator, independent of this panel.");
+      const limitStr = isUnlimitedLimit ? "no local preview cap" : `${dailyLimit} MON / 24h (preview)`;
+      addLog("VALIDATOR", "info", `Browser preview updated: ${limitStr}. Live enforcement stays at the v2 validator.`);
       setExecutionToast({
         type: "info",
-        title: "Policy Deployed to Monad!",
-        desc: `Updated spending limit to ${limitStr} with ${Object.keys(whitelistedContracts).length} whitelisted protocol routers.`,
+        title: "Saved in this browser",
+        desc: `Preview set to ${limitStr}. This did not broadcast a transaction. The on-chain cap is still the number on the quota card.`,
       });
-    }, 500);
+    }, 300);
   };
 
   // Add Protocol Router Manually
@@ -1233,7 +1275,7 @@ export default function Home() {
               SessionKeyValidator
             </div>
             <p className="text-[10px] sm:text-xs text-monad-cyan/80 mt-1.5 sm:mt-2 font-mono flex items-center justify-between">
-              <span>0x0102...57C4</span>
+              <span>0x847F...2991</span>
               <span className="text-[10px] underline">View ABI →</span>
             </p>
           </div>
@@ -1282,7 +1324,7 @@ export default function Home() {
                 <div className="flex justify-between items-center text-sm">
                   <span className="text-slate-300 font-medium">Max Spend per 24 Hours</span>
                   <span className="font-mono font-bold text-monad-cyan text-base">
-                    {isUnlimitedLimit ? "∞ Unlimited (Tanpa Batas)" : `$${dailyLimit} USD`}
+                    {isUnlimitedLimit ? "no preview cap" : `${dailyLimit} MON`}
                   </span>
                 </div>
 
@@ -1299,12 +1341,12 @@ export default function Home() {
                   />
                   <div className="flex-1 flex items-center justify-between">
                     <span className="text-xs font-semibold text-white font-mono flex items-center space-x-1.5">
-                      <span>Tanpa Batas (Unlimited Quota)</span>
+                      <span>Unlimited preview (does not write the chain)</span>
                       <span className="text-[10px] px-1.5 py-0.5 rounded bg-purple-950 text-monad-cyan border border-purple-800 font-bold">
                         ∞ No Cap
                       </span>
                     </span>
-                    <span className="text-[11px] text-slate-400 font-mono">Bypass $500 max</span>
+                    <span className="text-[11px] text-slate-400 font-mono">browser only</span>
                   </div>
                 </label>
 
@@ -1312,9 +1354,9 @@ export default function Home() {
                   <>
                     <input
                       type="range"
-                      min="10"
-                      max="500"
-                      step="10"
+                      min="1"
+                      max="100"
+                      step="1"
                       value={dailyLimit}
                       onChange={(e) => {
                         setDailyLimit(Number(e.target.value));
@@ -1323,9 +1365,9 @@ export default function Home() {
                       className="w-full accent-monad-purple cursor-pointer"
                     />
                     <div className="flex justify-between text-[11px] text-slate-500 font-mono">
-                      <span>$10 min</span>
-                      <span>$250</span>
-                      <span>$500 max</span>
+                      <span>1 MON</span>
+                      <span>50</span>
+                      <span>100 MON</span>
                     </div>
                   </>
                 )}
@@ -1458,7 +1500,7 @@ export default function Home() {
                 </div>
               </div>
 
-              {/* Save & Sign Policy Button */}
+              {/* Browser-only policy preview */}
               {hasUnsavedChanges && (
                 <button
                   onClick={handleSavePolicy}
@@ -1466,7 +1508,7 @@ export default function Home() {
                   className="w-full py-3 rounded-xl bg-gradient-to-r from-monad-purple to-purple-600 hover:from-monad-purple hover:to-purple-500 text-white font-semibold text-xs transition shadow-md shadow-monad-purple/30 flex items-center justify-center space-x-2"
                 >
                   <Fingerprint className="w-4 h-4" />
-                  <span>{isSavingPolicy ? "Broadcasting to Monad..." : "Save & Sign Policy (Passkey)"}</span>
+                  <span>{isSavingPolicy ? "Saving locally..." : "Save preview in this browser"}</span>
                 </button>
               )}
 
@@ -1483,12 +1525,12 @@ export default function Home() {
                   <PowerOff className="w-4 h-4" />
                   <span>
                     {isSessionActive
-                      ? "EMERGENCY KILL-SWITCH (Revoke Session)"
-                      : "Re-Authorize Session Key"}
+                      ? "Lock demo swaps in this browser"
+                      : "Clear the local lock"}
                   </span>
                 </button>
                 <p className="text-[11px] text-slate-400 text-center mt-2">
-                  Calls <code className="text-slate-300">revokeSessionKey()</code> on Monad directly from owner root.
+                  Does not call <code className="text-slate-300">revokeSessionKey()</code>. That call needs the owner key.
                 </p>
               </div>
             </div>
@@ -1510,14 +1552,13 @@ export default function Home() {
                     {(() => {
                       const amount = parseFloat(swapAmount) || 0;
                       const prices: Record<string, number> = { MON: 3.0, USDC: 1.0, WETH: 2650.0, KURU: 0.20 };
-                      const costUsd = +(amount * (prices[sourceToken] || 1.0)).toFixed(2);
-                      const remaining = +(dailyLimit - spentToday).toFixed(2);
+                      const remaining = +(dailyLimit - spentToday).toFixed(4);
+                      const spendMon = sourceToken === "MON" ? amount : +((amount * (prices[sourceToken] || 1)) / 3).toFixed(4);
                       if (amount <= 0) return <span className="text-slate-500">Enter amount</span>;
-                      if (costUsd <= remaining) {
-                        return <span className="text-emerald-400 font-semibold bg-emerald-950/60 px-2 py-0.5 rounded border border-emerald-800">✓ Safe (${costUsd} / ${remaining} left)</span>;
-                      } else {
-                        return <span className="text-rose-400 font-semibold bg-rose-950/60 px-2 py-0.5 rounded border border-rose-800">⚠️ Exceeds Quota by ${(costUsd - remaining).toFixed(2)}</span>;
+                      if (isUnlimitedLimit || spendMon <= remaining) {
+                        return <span className="text-emerald-400 font-semibold bg-emerald-950/60 px-2 py-0.5 rounded border border-emerald-800">preview {spendMon} / {remaining} MON left</span>;
                       }
+                      return <span className="text-rose-400 font-semibold bg-rose-950/60 px-2 py-0.5 rounded border border-rose-800">over preview cap by {(spendMon - remaining).toFixed(4)} MON</span>;
                     })()}
                   </div>
                 </div>
@@ -1683,7 +1724,10 @@ export default function Home() {
                     onClick={() => {
                       const prices: Record<string, number> = { MON: 3.0, USDC: 1.0, WETH: 2650.0, KURU: 0.20 };
                       const sPrice = prices[sourceToken] || 1.0;
-                      const maxVal = Math.max(0.1, +((dailyLimit - spentToday) / sPrice).toFixed(sourceToken === "WETH" ? 4 : 1));
+                      const remaining = Math.max(0, dailyLimit - spentToday);
+                      const maxVal = sourceToken === "MON"
+                        ? +remaining.toFixed(4)
+                        : +((remaining * 3) / sPrice).toFixed(sourceToken === "WETH" ? 6 : 2);
                       setSwapAmount(maxVal.toString());
                     }}
                     className="px-2.5 py-1 rounded-lg bg-purple-950/80 border border-purple-800 text-purple-300 hover:bg-purple-900 text-[11px] transition font-bold cursor-pointer"
@@ -2001,7 +2045,7 @@ export default function Home() {
                         Passkey (WebAuthn / Touch ID / Face ID)
                       </div>
                       <div className="text-[11px] text-slate-400">
-                        Self-custodial biometrics + 12-word recovery backup
+                        Device passkey. The P-256 key is checked on-chain by PasskeyVerifier. No seed phrase.
                       </div>
                     </div>
                   </div>
@@ -2024,7 +2068,7 @@ export default function Home() {
                         Demo Showcase Account (0x6E95...d8Bf)
                       </div>
                       <div className="text-[11px] text-purple-300/70">
-                        Pre-funded with 4.61 MON on Monad Testnet for judges
+                        Pre-funded demo on Monad Testnet. Swaps spend ParaPilotAccount, not this address.
                       </div>
                     </div>
                   </div>
@@ -2065,11 +2109,11 @@ export default function Home() {
                   <li><code>executeSwapViaSessionKey(router, tokenIn, tokenOut, amountIn, minOut)</code></li>
                   <li><code>revokeSessionKey(key)</code> (Emergency Kill-Switch)</li>
                   <li><code>setWhitelistedToken(key, token, allowed)</code></li>
-                  <li><code>setWhitelistedContract(key, target, allowed)</code></li>
+                  <li><code>PasskeyVerifier.verify(challenge, rpIdHash, pubX, pubY, assertion)</code> at 0x5B27...09F0</li>
                 </ul>
               </div>
               <div className="bg-purple-950/40 border border-purple-800/40 p-3 rounded-xl text-[11px] text-purple-200">
-                Tested against 10 comprehensive Hardhat unit test suites covering spend limits, time bounds, method gating, and kill switches.
+                14 Hardhat tests: spend limits, time bounds, method gating, token gating, kill-switch, and WebAuthn P-256 verification.
               </div>
             </div>
             <button
