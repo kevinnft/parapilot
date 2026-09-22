@@ -182,24 +182,37 @@ export default function Home() {
 
   const fetchMonadBalance = async (addr: string) => {
     try {
-      const res = await fetch("https://testnet-rpc.monad.xyz", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          jsonrpc: "2.0",
-          id: 1,
-          method: "eth_getBalance",
-          params: [addr, "latest"],
-        }),
-      });
-      const data = await res.json();
-      if (data && data.result) {
-        const wei = BigInt(data.result);
-        const mon = (Number(wei) / 1e18).toFixed(3);
-        setWalletBalance(mon);
-      }
+      const read = async () => {
+        const res = await fetch("https://testnet-rpc.monad.xyz", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "eth_getBalance", params: [addr, "latest"] }),
+        });
+        const data = await res.json();
+        return data?.result ? BigInt(data.result) : BigInt(0);
+      };
+      // This RPC has returned a stale low balance; trust the higher of two reads.
+      const a = await read();
+      const b = await read();
+      setWalletBalance((Number(a > b ? a : b) / 1e18).toFixed(3));
     } catch (e) {
       console.error("Balance fetch error:", e);
+    }
+  };
+
+  const fetchOnChainPolicy = async (session: string) => {
+    try {
+      const res = await fetch(`/api/policy?session=${session}`);
+      if (!res.ok) return;
+      const p = await res.json();
+      if (p.capMon > 0) {
+        setDailyLimit(+(p.capMon * 3).toFixed(2));
+        setSpentToday(+(p.spentMon * 3).toFixed(2));
+        setIsUnlimitedLimit(false);
+      }
+      setIsSessionActive(Boolean(p.active));
+    } catch (e) {
+      console.error("Policy fetch error:", e);
     }
   };
 
@@ -610,6 +623,7 @@ export default function Home() {
     localStorage.setItem("parapilot_wallet_method", "demo");
     fetchMonadBalance(demoAddr);
     fetchWalletTokens(demoAddr);
+    fetchOnChainPolicy(demoAddr);
     ensurePasskeyRecoveryKey("demo", demoAddr);
     addLog("POLICY", "success", `Loaded Demo Fleet Wallet: ${demoAddr.slice(0, 6)}...${demoAddr.slice(-4)} (balance shown live in header)`);
     addLog("VALIDATOR", "success", `Live Monad Session Key Active: ${demoAgentKey.slice(0, 6)}...${demoAgentKey.slice(-4)} (Tx: 0x1d7455...)`);
@@ -714,6 +728,7 @@ export default function Home() {
 
     setIsExecuting(true);
     const DEX_ADDRESS = "0x191382fF69aaF5f91617644b6281f224D9bA2764";
+    const DEMO_SIGNER = "0x6E95951bbAc8454950508394EC0F5fcCF6c4d8Bf";
     // Monad testnet bills the full gas limit. Pin every wallet tx so MetaMask/OKX
     // cannot inflate the estimate (observed ~3.46M, ~0.35 MON burned per swap).
     const MONAD_GAS = {
@@ -859,6 +874,7 @@ export default function Home() {
 
           fetchMonadBalance(connectedAddress);
           fetchWalletTokens(connectedAddress);
+          fetchOnChainPolicy(DEMO_SIGNER);
         } else {
           throw new Error(resData.error || "Execution failed on Monad Testnet.");
         }
@@ -1177,7 +1193,7 @@ export default function Home() {
           {/* Card 2: 24h Spending Quota */}
           <div className="bg-monad-card border border-monad-cardBorder rounded-xl sm:rounded-2xl p-3.5 sm:p-5 shadow-sm">
             <div className="flex items-center justify-between text-slate-400 text-[10px] sm:text-xs font-medium mb-1 sm:mb-2">
-              <span>24h Quota</span>
+              <span>24h Quota (on-chain)</span>
               <Coins className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-monad-purple" />
             </div>
             <div className="text-sm sm:text-lg lg:text-xl font-bold font-mono">
